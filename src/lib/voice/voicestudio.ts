@@ -1,5 +1,11 @@
 import "server-only";
 
+import {
+  hasAudioSignature,
+  looksLikeAudio,
+  sanitizeAlertText,
+} from "@/lib/voice/audio-validation";
+
 /**
  * VoiceStudio voice cloning provider.
  *
@@ -8,6 +14,12 @@ import "server-only";
  *
  * Cloned voices are created via POST /profiles with kind='clone' and ref_audio.
  * Deletion is handled via DELETE /profiles/{profile_id}.
+ *
+ * Format detection, text sanitisation and the returned-audio check live in
+ * ./audio-validation so `node --test` can import them: this module pulls in
+ * `server-only` and uses a TypeScript constructor parameter property, and Node
+ * can do neither. They are re-exported below so every existing import path
+ * keeps working.
  */
 
 const UPLOAD_TIMEOUT_MS = 60_000;
@@ -29,8 +41,8 @@ const ALLOWED_MIME = new Set([
 const MAX_BYTES = 25_000_000;
 const MIN_BYTES = 5_000;
 
-/** Alert lines, capped. Long enough for a template read-out, short enough to be free. */
-const MAX_TEXT_LENGTH = 300;
+/** Re-exported so importers of this module keep working unchanged. */
+export { hasAudioSignature, looksLikeAudio, sanitizeAlertText };
 
 function baseUrl(): string {
   return (process.env.VOICESTUDIO_BASE_URL ?? "").replace(/\/$/, "");
@@ -88,35 +100,6 @@ async function providerError(res: Response): Promise<VoiceStudioError> {
   return new VoiceStudioError(res.status, detail.slice(0, 300));
 }
 
-/**
- * Confirms the bytes really are the audio container the declared MIME type claims.
- */
-export function hasAudioSignature(bytes: Uint8Array, mime: string): boolean {
-  const startsWith = (...sig: number[]) => sig.every((b, i) => bytes[i] === b);
-  const asciiAt = (offset: number, text: string) => {
-    if (bytes.length < offset + text.length) return false;
-    for (let i = 0; i < text.length; i += 1) {
-      if (bytes[offset + i] !== text.charCodeAt(i)) return false;
-    }
-    return true;
-  };
-
-  if (mime === "audio/webm") return startsWith(0x1a, 0x45, 0xdf, 0xa3);
-  if (mime === "audio/ogg") return asciiAt(0, "OggS");
-  if (mime === "audio/flac") return asciiAt(0, "fLaC");
-  if (mime === "audio/mp4" || mime === "audio/x-m4a") return asciiAt(4, "ftyp");
-  if (mime === "audio/mpeg" || mime === "audio/mp3") {
-    return (
-      asciiAt(0, "ID3") ||
-      (bytes.length > 1 && bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0)
-    );
-  }
-  if (mime === "audio/wav" || mime === "audio/x-wav") {
-    return asciiAt(0, "RIFF") && asciiAt(8, "WAVE");
-  }
-  return false;
-}
-
 export function isAllowedMime(mime: string): boolean {
   return ALLOWED_MIME.has(mime);
 }
@@ -136,35 +119,6 @@ export function minUploadBytes(): number {
  */
 export function maxUploadMegabytes(): number {
   return Math.round(MAX_BYTES / 1_000_000);
-}
-
-/**
- * Alert text on its way to the engine.
- *
- * Strips angle/bracket characters so a donor cannot smuggle markup into the
- * provider, collapses whitespace, and caps the length.
- */
-export function sanitizeAlertText(raw: string): string {
-  return raw
-    .replace(/[<>{}[\]]/g, "") // strip SSML/markup injection attempts
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_TEXT_LENGTH);
-}
-
-/**
- * Minimal MP3/WAV magic-byte check on what the provider returned.
- *
- * The bytes come from VoiceStudio rather than a caller, so this is defence in
- * depth against a proxy or a misconfigured base URL quietly serving an error page
- * as audio. A cached HTML error page is otherwise played as a silent alert.
- */
-export function looksLikeAudio(buf: ArrayBuffer): boolean {
-  const b = new Uint8Array(buf).subarray(0, 4);
-  const isMp3 = b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33; // "ID3"
-  const isMp3Frame = b[0] === 0xff && (b[1]! & 0xe0) === 0xe0; // MPEG frame sync
-  const isWav = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46; // "RIFF"
-  return isMp3 || isMp3Frame || isWav;
 }
 
 /**

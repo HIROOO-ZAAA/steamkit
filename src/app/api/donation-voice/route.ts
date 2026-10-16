@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { allowPaymentRequest } from "@/lib/payments/rate-limit";
+import { hasAudioSignature } from "@/lib/voice/audio-validation";
 
 export const runtime = "nodejs";
 
@@ -34,42 +35,21 @@ function json(data: unknown, status = 200) {
 
 /**
  * Confirms the bytes really are the audio container the declared MIME type
- * claims, by looking for the container's magic number.
+ * claims.
  *
  * This matters because the bucket is public: an object whose declared type is
  * `audio/webm` but whose body is HTML would otherwise be served from a
- * Supabase domain as a document. The MIME allowlist alone cannot catch that,
+ * Supabase domain as a document. The MIME allowlist above cannot catch that,
  * because the MIME type comes from the client.
+ *
+ * The check itself lives in lib/voice/audio-validation, shared with the voice
+ * clone upload so the two cannot drift. The copy that used to sit here matched
+ * WebM and Ogg against one OR'd branch, so an Ogg payload declared as
+ * `audio/webm` passed validation and was then stored with a `.webm` extension.
+ *
+ * `ALLOWED` stays this route's own list: it is bounded by the `donation-voice`
+ * bucket's `allowed_mime_types`, which the provider's wider list is not.
  */
-function hasAudioSignature(bytes: Uint8Array, mime: string): boolean {
-  const startsWith = (...sig: number[]) =>
-    sig.every((byte, i) => bytes[i] === byte);
-  const asciiAt = (offset: number, text: string) => {
-    if (bytes.length < offset + text.length) return false;
-    for (let i = 0; i < text.length; i += 1) {
-      if (bytes[offset + i] !== text.charCodeAt(i)) return false;
-    }
-    return true;
-  };
-
-  // Matroska / WebM: 0x1A45DFA3. Ogg: "OggS".
-  if (mime === "audio/webm" || mime === "audio/ogg") {
-    return startsWith(0x1a, 0x45, 0xdf, 0xa3) || asciiAt(0, "OggS");
-  }
-  // ISO base media (m4a): a "ftyp" box at offset 4.
-  if (mime === "audio/mp4") return asciiAt(4, "ftyp");
-  // MP3: an "ID3" tag, or an MPEG audio frame sync (11 set bits).
-  if (mime === "audio/mpeg" || mime === "audio/mp3") {
-    return (
-      asciiAt(0, "ID3") || (bytes.length > 1 && bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0)
-    );
-  }
-  // WAV: "RIFF"...."WAVE".
-  if (mime === "audio/wav" || mime === "audio/x-wav") {
-    return asciiAt(0, "RIFF") && asciiAt(8, "WAVE");
-  }
-  return false;
-}
 
 /**
  * Accepts a donor voice message and stores it in the public
