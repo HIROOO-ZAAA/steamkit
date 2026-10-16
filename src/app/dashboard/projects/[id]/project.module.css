@@ -1,0 +1,235 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.topHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.topHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.colorTag {
+  width: 12px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+}
+
+.title {
+  font-size: 1.75rem !important;
+}
+
+.topHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 1.5rem;
+}
+
+.controlCard {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  height: fit-content;
+}
+
+.cardHeader h3 {
+  font-size: 1.15rem !important;
+  margin-bottom: 0.25rem;
+}
+
+.cardHeader p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.typeSelector {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.typeBtn {
+  padding: 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.typeBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.type_purple { background: rgba(16, 185, 129, 0.2) !important; color: #6ee7b7 !important; border-color: rgba(16, 185, 129, 0.4) !important; }
+.type_cyan { background: rgba(6, 182, 212, 0.2) !important; color: #67e8f9 !important; border-color: rgba(6, 182, 212, 0.4) !important; }
+.type_amber { background: rgba(245, 158, 11, 0.2) !important; color: #fcd34d !important; border-color: rgba(245, 158, 11, 0.4) !important; }
+.type_green { background: rgba(16, 185, 129, 0.2) !important; color: #6ee7b7 !important; border-color: rgba(16, 185, 129, 0.4) !important; }
+.type_red { background: rgba(239, 68, 68, 0.2) !important; color: #fca5a5 !important; border-color: rgba(239, 68, 68, 0.4) !important; }
+
+.feedCard {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: 500px;
+}
+
+.feedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.feedTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.feedTitleRow h3 {
+  font-size: 1.15rem !important;
+}
+
+.eventCount {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.emptyFeed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.emptyFeed span {
+  font-size: 3rem;
+}
+
+.feedList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.feedItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.item_donation { border-left: 4px solid var(--brand-primary); }
+.item_message { border-left: 4px solid var(--brand-secondary); }
+.item_alert { border-left: 4px solid var(--brand-accent); }
+.item_follow { border-left: 4px solid var(--brand-success); }
+.item_milestone { border-left: 4px solid var(--brand-danger); }
+
+.feedIcon {
+  font-size: 1.25rem;
+  margin-top: 0.1rem;
+}
+
+.feedBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.feedBodyTop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.feedBodyTop strong {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.feedAmount {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  color: #6ee7b7;
+  font-size: 0.95rem;
+}
+
+.feedText {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.feedTime {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.loadingWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.notFound {
+  padding: 4rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

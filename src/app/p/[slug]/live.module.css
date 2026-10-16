@@ -1,0 +1,253 @@
+.page {
+  min-height: 100vh;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.themeGlow {
+  position: fixed;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 600px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.loadingScreen, .errorScreen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.loadingSpinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-default);
+  border-top-color: var(--brand-primary);
+  border-radius: 50%;
+  animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 1.25rem 0;
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.channelMeta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.themeBadge {
+  width: 16px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+}
+
+.channelName {
+  font-size: 1.5rem !important;
+}
+
+.channelSlug {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.totalDonationsBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-md);
+}
+
+.totalLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6ee7b7;
+}
+
+.totalValue {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #6ee7b7;
+}
+
+.descriptionCard {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.alertToast {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-left-width: 6px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 2rem;
+  box-shadow: var(--shadow-glow);
+}
+
+.toastIcon {
+  font-size: 2rem;
+}
+
+.toastBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.toastTitle {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--brand-accent);
+}
+
+.toastContent {
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.feedSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.feedTitle {
+  font-size: 1.3rem !important;
+}
+
+.emptyCard {
+  padding: 4rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-muted);
+}
+
+.emptyCard span {
+  font-size: 3.5rem;
+}
+
+.eventsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.eventCard {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  position: relative;
+  transition: all var(--transition-base);
+}
+
+.newestEvent {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.25);
+  animation: pulse-border 2s ease infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(124, 58, 237, 0.5); }
+  50% { border-color: rgba(6, 182, 212, 0.8); }
+}
+
+.eventHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.eventIcon {
+  font-size: 1.4rem;
+}
+
+.eventSenderGroup {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.senderName {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.amountTag {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  color: #6ee7b7;
+  font-size: 1.1rem;
+}
+
+.eventText {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.eventFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.timeTag {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

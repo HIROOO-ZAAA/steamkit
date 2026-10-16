@@ -1,0 +1,187 @@
+/*
+ * OBS Overlay Styles
+ *
+ * CRITICAL: The root element and every container must have
+ * background: transparent so OBS chroma-keys correctly.
+ * Only .alertCard gets an optional background when card mode is on.
+ */
+
+/* ── Overlay root: full 1920×1080 transparent canvas ─────────────────────── */
+.overlayRoot {
+  width: 100vw;
+  height: 100vh;
+  background: transparent !important;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 96px;
+  pointer-events: none;
+  position: relative;
+}
+
+/* ── Invalid token error message ─────────────────────────────────────────── */
+.invalidToken {
+  color: #ef4444;
+  font-family: "Inter", monospace;
+  font-size: 1.1rem;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 1rem 2rem;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  max-width: 600px;
+  text-align: center;
+}
+
+/* ── Alert Card ───────────────────────────────────────────────────────────── */
+.alertCard {
+  background: transparent;
+  border-radius: 14px;
+  max-width: 860px;
+  width: max-content;
+  position: relative;
+}
+
+/* Card mode — background + border become visible */
+.alertCardEnabled {
+  padding: 28px 36px;
+  border: 1px solid transparent;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+/* ── Inner flex row/column ────────────────────────────────────────────────── */
+.alertInner {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+/* ── Image ────────────────────────────────────────────────────────────────── */
+.alertImageWrap {
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.alertImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Text group ───────────────────────────────────────────────────────────── */
+.alertTextGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Donor avatar + name row ──────────────────────────────────────────────── */
+.donorRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.donorAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffffff;
+  flex-shrink: 0;
+  backdrop-filter: blur(4px);
+}
+
+.donorName {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Alert message text ───────────────────────────────────────────────────── */
+.alertMessage {
+  word-break: break-word;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 1px 3px rgba(0, 0, 0, 0.9);
+  max-width: 680px;
+}
+
+/* ── TTS badge ────────────────────────────────────────────────────────────── */
+.ttsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  width: fit-content;
+}
+
+/* ══════════════════════════════════════════════════ ENTRY ANIMATIONS ════ */
+
+@keyframes fadeInAlert {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes bounceInAlert {
+  0%   { opacity: 0; transform: scale(0.35) translateY(40px); }
+  55%  { opacity: 1; transform: scale(1.07) translateY(-6px); }
+  75%  { transform: scale(0.96) translateY(2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideUpAlert {
+  from { opacity: 0; transform: translateY(80px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes zoomInAlert {
+  from { opacity: 0; transform: scale(0.55); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes flipInAlert {
+  from { opacity: 0; transform: perspective(600px) rotateX(-60deg); }
+  to   { opacity: 1; transform: perspective(600px) rotateX(0deg); }
+}
+
+@keyframes pulseGlowAlert {
+  0%   { opacity: 0; transform: scale(0.92); box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+  40%  { opacity: 1; transform: scale(1); }
+  60%  { box-shadow: 0 0 44px rgba(255, 255, 255, 0.28); }
+  100% { opacity: 1; transform: scale(1); box-shadow: 0 0 18px rgba(255, 255, 255, 0.12); }
+}
+
+.animFade      { animation: fadeInAlert   0.55s ease forwards; }
+.animBounce    { animation: bounceInAlert 0.7s  cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards; }
+.animSlide     { animation: slideUpAlert  0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.animZoom      { animation: zoomInAlert   0.5s  cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animFlip      { animation: flipInAlert   0.6s  cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animPulseGlow { animation: pulseGlowAlert 0.9s ease forwards; }
+
+.donorSubMessage {
+  margin-top: 8px; opacity: 0.85; font-style: italic; line-height: 1.35;
+}

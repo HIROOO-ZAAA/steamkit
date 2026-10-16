@@ -1,0 +1,585 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Check, Copy, Medal, Trophy, RotateCcw, Play, Pencil, Trash2, ArrowLeft } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import styles from "./widget-overlays.module.css";
+
+const LB_FONTS = ['Press Start 2P','Orbitron','Audiowide','Black Ops One','Bungee','Quantico','VT323','Wallpoet','Exo 2','Bebas Neue','Anton','Bangers','Carter One','Fredoka','Fugaz One','Lilita One','Passion One','Paytone One','Righteous','Russo One','Squada One','Teko','Titan One','Ultra','Battambang','Moul','Koulen','Hanuman','Siemreap','Nokora','Taprom','Inter','Rajdhani','Poppins','Roboto','Montserrat','Lato','Nunito','Open Sans','Oswald','Rubik','Ubuntu','Merriweather','Playfair Display','Lobster','Pacifico'];
+
+const sampleRows = [
+  { name: "WhaleDonor", amount: "$9.00" },
+  { name: "Srey Neth", amount: "$9.00" },
+  { name: "NightOwl", amount: "$33.00" },
+];
+
+const widgetTypeLabel = (source: string) =>
+  source === "Most Recent (History)" ? "RECENT"
+  : source === "This Month" ? "MONTH"
+  : source === "This Week" ? "WEEK"
+  : "ALL-TIME";
+
+type LeaderboardEntry = {
+  tipper_name: string;
+  amount: number;
+  currency: string;
+  tip_count: number;
+  last_tip_at: string;
+};
+
+export default function WidgetOverlaysPage() {
+  const [tips, setTips] = useState<LeaderboardEntry[]>([]);
+  const [filter, setFilter] = useState<"all" | "month" | "week">("all");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [widgetUrl, setWidgetUrl] = useState("");
+
+  const [supabase] = useState(() => createClient());
+
+  const [widgetTitle, setWidgetTitle] = useState("ក្ដិត");
+  const [dataSource, setDataSource] = useState("Most Recent (History)");
+  const [rows, setRows] = useState(3);
+  const [rowGap, setRowGap] = useState(4);
+  const [maxName, setMaxName] = useState(30);
+  const [colors, setColors] = useState({
+    background: "#0F172A", message: "#F8FAFC", badgeBg: "#10B981",
+    name: "#F8FAFC", amount: "#10B981", border: "#1E3350",
+  });
+  const [showBackground, setShowBackground] = useState(true);
+  const [showIcon, setShowIcon] = useState(true);
+  const [showMessage, setShowMessage] = useState(true);
+  const [showBorder, setShowBorder] = useState(true);
+  const [fontFamily, setFontFamily] = useState("Orbitron");
+  const [fontSize, setFontSize] = useState(20);
+  const [strokeW, setStrokeW] = useState(0);
+  const [strokeColor, setStrokeColor] = useState("#000000");
+  const [entryAnimation, setEntryAnimation] = useState("Drop Down");
+  const [highlightEffect, setHighlightEffect] = useState("None");
+  const [amountStyle, setAmountStyle] = useState("Simple");
+  const [nameStyle, setNameStyle] = useState("Simple");
+  const [enableRanks, setEnableRanks] = useState(true);
+  const [rankAsBadge, setRankAsBadge] = useState(false);
+  const [showStreak, setShowStreak] = useState(false);
+  const [animKey, setAnimKey] = useState(0);
+  const [view, setView] = useState<"list" | "create">("list");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [widgets, setWidgets] = useState<Array<{
+    id: number;
+    title: string;
+    rows: number;
+    animation: string;
+    type: string;
+    colors: string[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    settings: Record<string, any>;
+  }>>([]);
+  const [toast, setToast] = useState("");
+
+  // Declared after the state it reads/writes so there is no temporal-dead-zone
+  // access on the first render.
+  useEffect(() => {
+    async function fetchWidgetToken() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from("streamkit_overlay_credentials")
+        .upsert({ creator_id: user.id }, { onConflict: "creator_id" });
+
+      const { data: credentials } = await supabase
+        .from("streamkit_overlay_credentials")
+        .select("widget_token, widget_settings")
+        .eq("creator_id", user.id)
+        .maybeSingle();
+
+      if (credentials?.widget_token) {
+        const baseUrl =
+          typeof window !== "undefined"
+            ? window.location.origin
+            : "http://localhost:3000";
+        setWidgetUrl(`${baseUrl}/overlay/widget?token=${credentials.widget_token}`);
+      }
+
+      const saved = credentials?.widget_settings as
+        | { widgets?: unknown }
+        | undefined;
+      if (saved && Array.isArray(saved.widgets)) {
+        setWidgets(saved.widgets as typeof widgets);
+      }
+    }
+
+    void fetchWidgetToken();
+  }, [supabase]);
+  const [modal, setModal] = useState<{ type: "clear" | "test" | "delete"; goal: { id: number } } | null>(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(""), 2500);
+  };
+
+  useEffect(() => {
+    const id = "lb-fonts-link";
+    if (!document.getElementById(id)) {
+      const link = document.createElement("link");
+      link.id = id;
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?${LB_FONTS.map((f) => `family=${encodeURIComponent(f)}:wght@400;700`).join("&")}&display=swap`;
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLeaderboard() {
+      setLoading(true);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const since =
+          filter === "all"
+            ? null
+            : new Date(
+                Date.now() - (filter === "week" ? 7 : 30) * 24 * 60 * 60 * 1000,
+              ).toISOString();
+        const { data, error } = await supabase.rpc("streamkit_donor_leaderboard", {
+          p_since: since,
+        });
+
+        if (!cancelled) {
+          setLoadError(Boolean(error));
+          setTips(data ? (data as LeaderboardEntry[]).slice(0, 20) : []);
+        }
+      } catch {
+        if (!cancelled) setLoadError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadLeaderboard();
+    return () => { cancelled = true; };
+  }, [filter, supabase]);
+
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <div className="skeleton" style={{ height: "300px", width: "100%" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <p className={styles.subtitle} style={{ margin: 0 }}>Dashboard / Widget Overlays</p>
+          <h1 className={styles.title}>Widget Overlays</h1>
+          <p className={styles.subtitle}>Manage your stream widgets and overlay parameters.</p>
+        </div>
+        {view === "list" && (
+        <button
+          type="button"
+          className={styles.initBtn}
+          style={{ width: "auto", padding: "10px 22px", marginTop: 0 }}
+          onClick={() => { setEditingId(null); setView("create"); }}
+        >
+          + CREATE WIDGET
+        </button>
+        )}
+      </div>
+
+      {view === "list" ? (
+        <div className={styles.widgetTable}>
+          <div className={styles.widgetHead}>
+            <span>TITLE</span>
+            <span>CONFIG</span>
+            <span>TYPE</span>
+            <span>COLORS</span>
+            <span style={{ textAlign: "right" }}>ACTIONS</span>
+          </div>
+          {widgets.map((w) => (
+            <div key={w.id} className={styles.widgetRow}>
+              <span className={styles.widgetTitleCell}>
+                <strong>{w.title}</strong>
+                <small>ID: {w.id}</small>
+              </span>
+              <span style={{ display: "flex", gap: 8 }}>
+                <span className={styles.configChip}>{w.rows} Rows</span>
+                <span className={styles.configChip}>{w.animation}</span>
+              </span>
+              <span><span className={styles.typeBadge}>{w.type}</span></span>
+              <span style={{ display: "flex", gap: 6 }}>
+                {w.colors.map((c, i) => (
+                  <span key={i} style={{ width: 16, height: 16, borderRadius: 4, background: c, border: "1px solid #1E3350" }} />
+                ))}
+              </span>
+              <span style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button type="button" className={styles.actClear} onClick={() => setModal({ type: "clear", goal: w })}><RotateCcw size={14} /> Clear</button>
+                <button type="button" className={styles.actUnlock} title="Copy widget URL" style={{ width: 38, height: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }} onClick={() => { navigator.clipboard.writeText(widgetUrl); showToast("Widget URL copied for OBS."); }}><Copy size={15} /></button>
+                <button type="button" className={styles.actIcon} style={{ color: "#10B981" }} title="Send test donation" onClick={() => setModal({ type: "test", goal: w })}><Play size={15} /></button>
+                <button type="button" className={styles.actIcon} title="Edit" onClick={() => {
+                  const s = w.settings ?? null;
+                  if (s) {
+                    if (s.title !== undefined) setWidgetTitle(s.title);
+                    if (s.dataSource) setDataSource(s.dataSource);
+                    if (s.rows) setRows(s.rows);
+                    if (s.rowGap !== undefined) setRowGap(s.rowGap);
+                    if (s.maxName) setMaxName(s.maxName);
+                    if (s.colors) setColors((c) => ({ ...c, ...s.colors }));
+                    if (s.fontFamily) setFontFamily(s.fontFamily);
+                    if (s.fontSize) setFontSize(s.fontSize);
+                    if (s.strokeW !== undefined) setStrokeW(s.strokeW);
+                    if (s.strokeColor) setStrokeColor(s.strokeColor);
+                    if (s.entryAnimation) setEntryAnimation(s.entryAnimation);
+                    if (s.highlightEffect) setHighlightEffect(s.highlightEffect);
+                    if (s.amountStyle) setAmountStyle(s.amountStyle);
+                    if (s.nameStyle) setNameStyle(s.nameStyle);
+                    if (s.showBackground !== undefined) setShowBackground(s.showBackground);
+                    if (s.showIcon !== undefined) setShowIcon(s.showIcon);
+                    if (s.showMessage !== undefined) setShowMessage(s.showMessage);
+                    if (s.showBorder !== undefined) setShowBorder(s.showBorder);
+                    if (s.enableRanks !== undefined) setEnableRanks(s.enableRanks);
+                    if (s.rankAsBadge !== undefined) setRankAsBadge(s.rankAsBadge);
+                    if (s.showStreak !== undefined) setShowStreak(s.showStreak);
+                  } else {
+                    setWidgetTitle(w.title);
+                    setRows(w.rows);
+                  }
+                  setEditingId(w.id);
+                  setView("create");
+                }}><Pencil size={15} /></button>
+                <button type="button" className={styles.actIcon} style={{ color: "#F87171" }} title="Delete" onClick={() => setModal({ type: "delete", goal: w })}><Trash2 size={15} /></button>
+              </span>
+            </div>
+          ))}
+          {widgets.length === 0 && <p style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No widgets yet. Create one to get started.</p>}
+        </div>
+      ) : (
+      <div>
+        <button type="button" className={styles.backBtn} onClick={() => setView("list")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "#F8FAFC", cursor: "pointer", marginBottom: 16 }}>
+          <ArrowLeft size={16} /> Back
+        </button>
+      <div className={styles.createGrid}>
+        <div className={styles.createLeft}>
+          <div className={`${styles.card} card`} style={{ marginBottom: 20 }}>
+            <h3 className={styles.cardLabel}>CONFIGURE WIDGET</h3>
+            <p className={styles.subtitle}>Setup · Overlay parameters</p>
+
+            <h4 className={styles.sectionLabel}>Basics</h4>
+            <div className="input-group">
+              <label className="input-label">Widget Title</label>
+              <input className="input" value={widgetTitle} onChange={(e) => setWidgetTitle(e.target.value)} />
+            </div>
+            <div className="input-group" style={{ marginTop: 12 }}>
+              <label className="input-label">Data Source</label>
+              <select className="input" value={dataSource} onChange={(e) => setDataSource(e.target.value)}>
+                <option>Most Recent (History)</option>
+                <option>All-Time Top Donors</option>
+                <option>This Month</option>
+                <option>This Week</option>
+              </select>
+            </div>
+            <div className={styles.cfgRow3}>
+              <div className="input-group">
+                <label className="input-label">Rows</label>
+                <input className="input" type="number" value={rows} onChange={(e) => setRows(Number(e.target.value))} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Row Gap</label>
+                <input className="input" type="number" value={rowGap} onChange={(e) => setRowGap(Number(e.target.value))} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Max Name</label>
+                <input className="input" type="number" value={maxName} onChange={(e) => setMaxName(Number(e.target.value))} />
+              </div>
+            </div>
+
+            <h4 className={styles.sectionLabel}>Appearance</h4>
+            <div className="input-group">
+              <label className="input-label">Color Theme</label>
+              <div className={styles.swatchRow}>
+                {([
+                  ["background", "Background"], ["message", "Message"], ["badgeBg", "Badge Bg"],
+                  ["name", "Name"], ["amount", "Amount"], ["border", "Border"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className={styles.swatch}>
+                    <span className={styles.swatchDot} style={{ background: colors[key] }}>
+                      <input type="color" value={colors[key]} onChange={(e) => setColors((c) => ({ ...c, [key]: e.target.value }))} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", padding: 0, border: "none" }} />
+                    </span>
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <h4 className={styles.sectionLabel}>Visibility & Layout</h4>
+            {([
+              ["Show Background", showBackground, setShowBackground],
+              ["Show Icon", showIcon, setShowIcon],
+              ["Show Message", showMessage, setShowMessage],
+              ["Show Border", showBorder, setShowBorder],
+            ] as const).map(([label, val, setter]) => (
+              <div key={label} className={styles.cfgToggleRow}>
+                <span>{label}</span>
+                <button type="button" className={val ? styles.toggleOn : styles.toggle} onClick={() => setter(!val)}>
+                  <span className={styles.toggleKnob} />
+                </button>
+              </div>
+            ))}
+
+            <h4 className={styles.sectionLabel}>Typography</h4>
+            <div className="input-group">
+              <label className="input-label">Font Family</label>
+              <select className="input" value={fontFamily} onChange={(e) => setFontFamily(e.target.value)}>
+                {LB_FONTS.map((f) => <option key={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className={styles.cfgRow3}>
+              <div className="input-group">
+                <label className="input-label">Size (px)</label>
+                <input className="input" type="number" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Stroke W</label>
+                <input className="input" type="number" value={strokeW} onChange={(e) => setStrokeW(Number(e.target.value))} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Stroke</label>
+                <label className={styles.colorDot} style={{ background: strokeColor }}>
+                  <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", padding: 0, border: "none" }} />
+                </label>
+              </div>
+            </div>
+
+            <h4 className={styles.sectionLabel}>Motion & Style</h4>
+            <div className={styles.cfgRow3} style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <div className="input-group">
+                <label className="input-label">Entry Animation</label>
+                <select className="input" value={entryAnimation} onChange={(e) => { setEntryAnimation(e.target.value); setAnimKey((k) => k + 1); }}>
+                  <option>Drop Down</option><option>Fade</option><option>Slide In</option><option>Slide Up</option><option>None</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Highlight Effect</label>
+                <select className="input" value={highlightEffect} onChange={(e) => setHighlightEffect(e.target.value)}>
+                  <option>None</option><option>Glow</option><option>Pulse</option>
+                </select>
+              </div>
+            </div>
+
+            <h4 className={styles.sectionLabel}>Badge Styles</h4>
+            <div className={styles.cfgRow3} style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <div className="input-group">
+                <label className="input-label">Amount Style</label>
+                <select className="input" value={amountStyle} onChange={(e) => setAmountStyle(e.target.value)}>
+                  <option>Simple</option><option>Badge</option><option>Pill</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Name Style</label>
+                <select className="input" value={nameStyle} onChange={(e) => setNameStyle(e.target.value)}>
+                  <option>Simple</option><option>Badge</option><option>Pill</option>
+                </select>
+              </div>
+            </div>
+
+            <h4 className={styles.sectionLabel}>Ranking</h4>
+            {([
+              ["Enable Ranks", enableRanks, setEnableRanks],
+              ["Show as Badge", rankAsBadge, setRankAsBadge],
+              ["Show Streak 🔥", showStreak, setShowStreak],
+            ] as const).map(([label, val, setter]) => (
+              <div key={label} className={styles.cfgToggleRow}>
+                <span>{label}</span>
+                <button type="button" className={val ? styles.toggleOn : styles.toggle} onClick={() => setter(!val)}>
+                  <span className={styles.toggleKnob} />
+                </button>
+              </div>
+            ))}
+
+            <h4 className={styles.sectionLabel}>Session & Recent</h4>
+            <button type="button" className={styles.initBtn} onClick={async () => {
+              const newSettings = {
+                title: widgetTitle, dataSource, rows, rowGap, maxName, colors: { ...colors },
+                showBackground, showIcon, showMessage, showBorder,
+                fontFamily, fontSize, strokeW, strokeColor, entryAnimation, highlightEffect,
+                amountStyle, nameStyle, enableRanks, rankAsBadge, showStreak,
+              };
+              const newWidgets = editingId
+                ? widgets.map((x) => x.id === editingId ? { ...x, title: widgetTitle || "Widget", rows, animation: entryAnimation.toLowerCase().replace(/\s/g, ""), type: widgetTypeLabel(dataSource), colors: [colors.background, colors.border, colors.amount, colors.name, colors.message, colors.badgeBg], settings: newSettings } : x)
+                : [...widgets, { id: Math.floor(100 + Math.random() * 900), title: widgetTitle || "Widget", rows, animation: entryAnimation.toLowerCase().replace(/\s/g, ""), type: widgetTypeLabel(dataSource), colors: [colors.background, colors.border, colors.amount, colors.name, colors.message, colors.badgeBg], settings: newSettings }];
+              setWidgets(newWidgets);
+              const storedSettings = { ...newSettings, widgets: newWidgets };
+              setEditingId(null);
+              setView("list");
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                  const { error } = await supabase
+                    .from("streamkit_overlay_credentials")
+                    .update({ widget_settings: storedSettings })
+                    .eq("creator_id", user.id);
+                  if (error) {
+                    showToast(`Save failed: ${error.message}`);
+                    return;
+                  }
+                  const channel = supabase.channel("streamkit-widget-settings");
+                  await channel.subscribe();
+                  await channel.send({ type: "broadcast", event: "updated", payload: {} });
+                  void supabase.removeChannel(channel);
+                }
+                showToast("Widget saved. OBS overlay updated.");
+              } catch (e) {
+                showToast(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+              }
+            }}>
+              {editingId ? "SAVE WIDGET" : "CREATE WIDGET"}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.createRight}>
+          <div className={styles.livePreviewLabel}>LIVE STREAM PREVIEW <span className={styles.liveDot} /></div>
+          <div className={styles.previewDashed}>
+            <div
+              key={animKey}
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                fontFamily: `'${fontFamily}', sans-serif`,
+                fontSize,
+                color: colors.name,
+              }}
+            >
+              {showMessage && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: colors.message, fontWeight: 700 }}>
+                  {showIcon && <Trophy size={16} color={colors.amount} />}
+                  {widgetTitle}
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: rowGap }}>
+                {sampleRows.slice(0, Math.max(0, rows)).map((row, i) => (
+                  <div
+                    key={row.name}
+                    className={`${styles.lbPreviewRow} ${entryAnimation === "Drop Down" ? styles.animDrop : entryAnimation === "Fade" ? styles.animFade : entryAnimation === "Slide In" ? styles.animSlide : ""}`}
+                    style={{
+                      background: showBackground ? colors.background : "transparent",
+border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
+                      boxShadow: highlightEffect === "Glow" ? `0 0 14px ${colors.amount}66` : highlightEffect === "Pulse" ? undefined : undefined,
+                    }}
+                  >
+                    {enableRanks && (
+                      rankAsBadge ? (
+                        <span style={{ backgroundColor: colors.badgeBg, color: "#0F172A", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>#{i + 1}</span>
+                      ) : (
+                        <span style={{ color: colors.amount, fontWeight: 700, width: 24 }}>#{i + 1}</span>
+                      )
+                    )}
+                    <span style={nameStyle !== "Simple" ? { backgroundColor: colors.badgeBg, borderRadius: nameStyle === "Pill" ? 999 : 6, padding: "2px 10px" } : undefined}>
+                      {row.name.slice(0, maxName)}{showStreak && enableRanks ? " 🔥" : ""}
+                    </span>
+                    <strong style={{ marginLeft: "auto", color: colors.amount, WebkitTextStroke: strokeW ? `${strokeW}px ${strokeColor}` : undefined, backgroundColor: amountStyle !== "Simple" ? colors.badgeBg : undefined, borderRadius: amountStyle === "Pill" ? 999 : 6, padding: amountStyle !== "Simple" ? "2px 10px" : 0 }}>
+                      {row.amount}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      )}
+
+      {tips.length > 0 && (
+      <div className={`${styles.card} card`} style={{ borderRadius: 12, border: "1px solid #10B981", borderLeft: "4px solid #10B981" }}>
+          <div className={styles.leaderboardGrid}>
+            {tips.map((tip, index) => (
+              <div
+                key={`${tip.tipper_name}-${tip.currency}`}
+                className={`${styles.leaderboardCard} ${index === 0 ? styles.rankGold : index === 1 ? styles.rankSilver : index === 2 ? styles.rankBronze : ""}`}
+              >
+                <div className={styles.rankBadge}>
+                  {index < 3 ? <Medal size={18} /> : `#${index + 1}`}
+                </div>
+                <div className={styles.donorMeta}>
+                  <strong>{tip.tipper_name}</strong>
+                  <span>{tip.tip_count} {tip.tip_count === 1 ? "donation" : "donations"}</span>
+                </div>
+                <div className={styles.donorAmount}>
+                  {tip.currency === "KHR"
+                    ? `KHR ${Number(tip.amount).toLocaleString()}`
+                    : `USD $${Number(tip.amount).toFixed(2)}`}
+                </div>
+              </div>
+            ))}
+          </div>
+      </div>
+      )}
+      {modal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(4,7,14,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+          <div style={{ position: "relative", overflow: "hidden", background: "#0F172A", border: "1px solid #1E3350", borderLeft: "4px solid #10B981", borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #0E5844, #10B981)" }} />
+            <h3 style={{ margin: 0, color: "#F8FAFC", display: "flex", alignItems: "center", gap: 10, letterSpacing: 1 }}>
+              {modal.type === "clear" ? <RotateCcw size={18} color="#34D399" /> : modal.type === "delete" ? <Trash2 size={18} color="#F87171" /> : <Play size={18} color="#34D399" />}
+              {modal.type === "clear" ? "CLEAR WIDGET HISTORY?" : modal.type === "delete" ? "CONFIRM DELETION?" : "SEND TEST DONATION?"}
+            </h3>
+            <p style={{ color: "#94A3B8", fontSize: 14 }}>
+              {modal.type === "clear"
+                ? "This will start a new session on OBS. Donation history for this widget will be cleared."
+                : modal.type === "delete"
+                  ? "This widget will be permanently removed. This action cannot be undone."
+                  : "A simulated mock layout will appear on your OBS widget for 1 minute. You do not need to refresh OBS."}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button type="button" onClick={() => setModal(null)} style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, color: "#94A3B8", cursor: "pointer", padding: "10px 20px", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Cancel</button>
+<button
+                  type="button"
+                  onClick={async () => {
+                    if (modal.type === "delete") {
+                      const remaining = widgets.filter((x) => x.id !== modal.goal.id);
+                      setWidgets(remaining);
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (user) {
+                        const { data: creds } = await supabase
+                          .from("streamkit_overlay_credentials")
+                          .select("widget_settings")
+                          .eq("creator_id", user.id)
+                          .maybeSingle();
+                        await supabase
+                          .from("streamkit_overlay_credentials")
+                          .update({ widget_settings: { ...(creds?.widget_settings ?? {}), widgets: remaining } })
+                          .eq("creator_id", user.id);
+                      }
+                      showToast("Widget deleted.");
+                    } else if (modal.type === "clear") {
+                      const { error } = await supabase.rpc("streamkit_widget_clear_history");
+                      showToast(error ? `Clear failed: ${error.message}` : "Widget history cleared. OBS will reset on next refresh.");
+                    } else {
+                      const { error } = await supabase.rpc("streamkit_insert_test_tip", {
+                        p_name: "Test Donor",
+                        p_amount: 10,
+                        p_currency: "USD",
+                        p_message: "Test donation from Widget Overlays",
+                      });
+                      showToast(error ? `Test failed: ${error.message}` : "Test donation sent to OBS.");
+                    }
+                    setModal(null);
+                  }}
+                style={{ background: modal.type === "delete" ? "#EF4444" : "#10B981", border: "none", color: "#0F172A", borderRadius: 8, padding: "10px 20px", cursor: "pointer", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", boxShadow: modal.type === "delete" ? "0 0 16px rgba(239,68,68,0.4)" : "0 0 16px rgba(16,185,129,0.4)" }}
+              >
+                {modal.type === "clear" ? "Yes, Clear" : modal.type === "delete" ? "Yes, Delete" : "Send Test"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toast && (<div className={styles.toast}><span className={styles.toastIcon}>✓</span><div><div className={styles.toastTitle}>Success</div><div className={styles.toastMsg}>{toast}</div></div></div>)}
+    </div>
+  );
+}

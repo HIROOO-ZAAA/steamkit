@@ -1,0 +1,574 @@
+.page {
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.navInner {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.brandMark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.06);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.08);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+}
+
+.navLinks,
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navLinks a {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.navLinks a:hover,
+.navLinks a:focus-visible {
+  color: var(--text-primary);
+}
+
+.hero {
+  position: relative;
+  padding: 72px 0 64px;
+  border-bottom: 1px solid var(--border-default);
+  isolation: isolate;
+}
+
+.hero::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background-image:
+    linear-gradient(to right, rgba(22, 48, 74, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 48, 74, 0.12) 1px, transparent 1px),
+    linear-gradient(to right, rgba(22, 48, 74, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 48, 74, 0.06) 1px, transparent 1px);
+  background-size:
+    80px 80px,
+    80px 80px,
+    40px 40px,
+    40px 40px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 90%);
+  pointer-events: none;
+}
+
+.hero::after {
+  position: absolute;
+  inset: 12% 12% auto auto;
+  width: 420px;
+  height: 420px;
+  content: "";
+  background: radial-gradient(
+    circle,
+    rgba(16, 185, 129, 0.14),
+    transparent 62%
+  );
+  pointer-events: none;
+  filter: blur(30px);
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
+  align-items: center;
+  gap: 48px;
+}
+
+.heroCopy {
+  max-width: 550px;
+  padding: 20px 0;
+}
+
+.eyebrow,
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.heroCopy h1 {
+  max-width: 600px;
+  margin-top: 20px;
+  color: var(--text-primary);
+  font-size: 60px;
+  line-height: 1;
+}
+
+.heroDescription {
+  max-width: 520px;
+  margin-top: 22px;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.heroFootnote {
+  display: block;
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.activitySection {
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.activityHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.activityHeading h2 {
+  margin-top: 6px;
+  font-size: 28px;
+}
+
+.sampleNote {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.activityRail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(250px, 1fr));
+  gap: 0 18px;
+}
+
+.activityItem {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(17, 28, 50, 0.55);
+}
+
+.activityText,
+.activityAmount {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.activityText strong,
+.activityAmount strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityText span,
+.activityAmount span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityAmount {
+  margin-left: auto;
+  text-align: right;
+}
+
+.activityAmount span {
+  color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+}
+
+.capabilities {
+  padding: 76px 0;
+}
+
+.capabilityGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  gap: 32px;
+  align-items: start;
+  margin-top: 36px;
+}
+
+.primaryFeature {
+  position: sticky;
+  top: 96px;
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(17, 28, 50, 0.92),
+    rgba(19, 32, 58, 0.72)
+  );
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.08),
+    0 0 20px rgba(16, 185, 129, 0.04);
+}
+
+.primaryFeature h3 {
+  margin-top: 14px;
+  font-size: 32px;
+}
+
+.primaryFeature > p:not(.sectionLabel, .safetyNote) {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.eventFlow {
+  display: grid;
+  gap: 0;
+  margin-top: 28px;
+  list-style: none;
+}
+
+.eventFlow li {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-content: center;
+  column-gap: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.eventFlow li > span {
+  grid-row: span 2;
+  align-self: center;
+  color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+}
+
+.eventFlow strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.eventFlow small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.safetyNote {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.toolColumn {
+  display: grid;
+  gap: 28px;
+}
+
+.toolGroup > .sectionLabel {
+  margin-bottom: 8px;
+}
+
+.toolRow {
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(17, 28, 50, 0.25);
+}
+
+.toolIndex {
+  color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.toolRow h3 {
+  color: var(--text-primary);
+  font-size: 21px;
+}
+
+.toolRow p {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.callToAction {
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  background: linear-gradient(
+    180deg,
+    rgba(17, 28, 50, 0.7),
+    rgba(15, 23, 42, 0.8)
+  );
+}
+
+.ctaInner {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.ctaInner h2 {
+  margin-top: 8px;
+  font-size: 38px;
+}
+
+.footer {
+  border-top: 0;
+  border-bottom: 0;
+  background: var(--bg-base);
+}
+
+.footerInner {
+  min-height: 80px;
+}
+
+.footerNote,
+.copyright {
+  color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .heroGrid {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .heroCopy {
+    max-width: 720px;
+  }
+
+  .capabilityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryFeature {
+    position: static;
+  }
+
+  .activityRail {
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .navInner {
+    width: calc(100% - 32px);
+    min-height: 60px;
+    gap: 10px;
+  }
+
+  .brand {
+    font-size: 19px;
+  }
+
+  .brandMark {
+    width: 27px;
+    height: 27px;
+  }
+
+  .navLinks {
+    display: none;
+  }
+
+  .navActions {
+    gap: 4px;
+  }
+
+  .navActions :global(.btn) {
+    padding-inline: 9px;
+    font-size: 12px;
+  }
+
+  .hero {
+    padding: 24px 0 16px;
+  }
+
+  .heroGrid {
+    width: calc(100% - 32px);
+    gap: 16px;
+  }
+
+  .heroCopy {
+    padding: 0;
+  }
+
+  .heroCopy h1 {
+    margin-top: 10px;
+    font-size: 42px;
+  }
+
+  .heroDescription {
+    margin-top: 8px;
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .heroActions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .heroActions :global(.btn) {
+    width: 100%;
+    min-height: 40px;
+    padding-block: 8px;
+  }
+
+  .heroFootnote {
+    display: block;
+    margin-top: 18px;
+    padding-top: 10px;
+    font-size: 10px;
+  }
+
+  .activitySection {
+    padding: 24px 0;
+  }
+
+  .activityHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .activityHeading h2 {
+    font-size: 25px;
+  }
+
+  .activityRail {
+    width: calc(100vw - 16px);
+    grid-template-columns: repeat(3, minmax(250px, 1fr));
+    margin-right: -16px;
+  }
+
+  .capabilities {
+    padding: 52px 0;
+  }
+
+  .capabilityGrid {
+    gap: 24px;
+    margin-top: 24px;
+  }
+
+  .primaryFeature {
+    padding: 18px;
+  }
+
+  .primaryFeature h3 {
+    font-size: 28px;
+  }
+
+  .toolRow {
+    grid-template-columns: 30px minmax(0, 1fr) 16px;
+    gap: 8px;
+  }
+
+  .toolRow h3 {
+    font-size: 19px;
+  }
+
+  .ctaInner {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }
+
+  .ctaInner h2 {
+    font-size: 32px;
+  }
+
+  .footerInner {
+    width: calc(100% - 32px);
+    min-height: 100px;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+  }
+
+  .footerNote {
+    display: none;
+  }
+}
