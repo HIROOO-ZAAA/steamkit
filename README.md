@@ -1,6 +1,6 @@
 # ⚡ StreamKit — Creator Tipping & Livestream Alert Dashboard
 
-StreamKit is a real-time creator tipping platform and livestream alert dashboard built with Next.js App Router, TypeScript, and Supabase. It includes native **Khmer Text-to-Speech (TTS)** support and transparent OBS Studio browser source overlays.
+StreamKit is a real-time creator tipping platform and livestream alert dashboard built with Next.js App Router, TypeScript, and Supabase. It includes creator **voice cloning** for alert read-aloud and transparent OBS Studio browser source overlays.
 
 ---
 
@@ -10,7 +10,8 @@ StreamKit is a real-time creator tipping platform and livestream alert dashboard
 - **Tip Settings & Gateways (`/dashboard/tips`)**: Configure currencies (USD / KHR Riel), minimum tip amounts, preset amounts, and custom thank you notes.
 - **Livestream Alerts (`/dashboard/alerts`)**: On-screen alert duration, custom sound effects, animations (bounce, fade, slide, zoom), and test alert trigger.
 - **Donor Photo Moderation (`/dashboard/donations`)**: Fans can attach a photo to their tip on the public tip page; it lands in a pending review queue and only shows on the live OBS overlay after you Approve it (StreamNeon-style Live Feed / Audit Queue).
-- **Khmer Text-to-Speech (`/dashboard/voice`)**: Native Khmer (`km-KH`) speech synthesis provider selection, pitch/rate controls, test phrase workflow, and optional ethical voice cloning with explicit owner consent.
+- **Alert Voice Cloning (`/dashboard/voice-settings`)**: Record a short sample (3–15s of clean speech) and StreamKit clones it with a self-hosted [VoiceStudio](https://github.com/debpalash/VoiceStudio) instance. Alerts then read themselves aloud in that cloned voice. Samples longer than 15s need a matching transcript; longer than 20s needs a speech-to-text model. If the cloning backend is unreachable, alerts fall back to the browser's own speech voice rather than going silent.
+- **Donor Voice Messages**: Fans can attach a short voice message to their tip on the public tip page. It plays as part of the alert and replaces the template read-aloud for that tip.
 - **OBS Browser Source (`/dashboard/browser-source`)**: Secret token URL generator for transparent OBS Studio / Streamlabs integration (`/overlay/[token]`).
 - **Widgets Gallery (`/dashboard/widgets`)**: Goal progress bars, scrolling tip tickers, and chat overlay widgets.
 - **Public Viewer Tipping Page (`/[username]`)**: Public-facing page where fans can send tips, choose amounts, and trigger live alerts on stream.
@@ -27,11 +28,24 @@ StreamKit is a real-time creator tipping platform and livestream alert dashboard
 | `/dashboard/settings` | Account settings: Identity Matrix (display name, username) + security |
 | `/dashboard/tips` | Tip settings, currency options, and tip history |
 | `/dashboard/alerts` | On-screen alert styling, sound SFX, and test alert trigger |
-| `/dashboard/voice` | Khmer TTS settings, voice test phrase, and voice cloning consent |
+| `/dashboard/voice-settings` | Alert voice cloning: upload a sample, consent, preview ("Test this voice"), remove |
 | `/dashboard/widgets` | Goal bar, chat, and ticker widget URLs |
 | `/dashboard/browser-source` | Secret OBS Browser Source token URL & setup guide |
-| `/[username]` | Public viewer tipping form & creator profile |
-| `/overlay/[token]` | OBS Studio transparent alert overlay page |
+| `/[username]` | Public creator profile |
+| `/pay/[username]` | Public tipping form (optional donor voice message on submit) |
+| `/overlay/[token]` | OBS Studio transparent alert overlay page (redirects to `/overlay/alerts?token=…`) |
+
+### Voice cloning backend (VoiceStudio)
+
+Alert read-aloud is synthesised by a **self-hosted VoiceStudio instance** reached over a reverse proxy or a Cloudflare tunnel. Configure three server-side variables in `.env.local` (see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `VOICESTUDIO_BASE_URL` | Public URL of the instance — **not** `localhost`, which only exists on its own machine |
+| `VOICESTUDIO_SHARED_SECRET` | Must equal the instance's `OMNIVOICE_API_KEY`; sent as `Authorization: Bearer`. A tunnel host name is one VoiceStudio does not recognise, so a missing or mismatched value is refused on every call |
+| `VOICESTUDIO_DEFAULT_VOICE_ID` | Stock voice used when a creator has no consented clone |
+
+Without these, `/api/voice-clones` and `/api/tts/synthesize` answer 503 and alerts fall back to the browser voice.
 
 ---
 
