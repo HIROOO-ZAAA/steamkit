@@ -13,6 +13,7 @@ import {
   type AlertSettings,
   type AlertTier,
 } from "@/lib/overlay/alert-logic";
+import { playAudioToEnd } from "@/lib/overlay/audio-playback";
 
 type VoiceSettings = {
   language: string;
@@ -152,15 +153,9 @@ async function synthesizeWithCreatorVoice(text: string): Promise<string | null> 
 }
 
 /** Plays a URL, resolving true only if it actually played to the end. */
-function playAudioUrl(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const audio = new Audio(url);
-    audio.addEventListener("ended", () => resolve(true), { once: true });
-    audio.addEventListener("error", () => resolve(false), { once: true });
-    // Autoplay can be refused before the browser source has been interacted
-    // with; that is a failure to speak, not a reason to hang the queue.
-    audio.play().catch(() => resolve(false));
-  });
+async function playAudioUrl(url: string): Promise<boolean> {
+  const outcome = await playAudioToEnd(new Audio(url));
+  return outcome === "ended";
 }
 
 /**
@@ -178,16 +173,9 @@ async function speak(text: string, voice: VoiceSettings): Promise<void> {
   await speakWithBrowser(line, voice);
 }
 
-/** Plays a donor voice message, resolving when it ends or cannot start. */
-function playVoiceMessage(path: string): Promise<void> {
-  return new Promise((resolve) => {
-    const audio = new Audio(`${VOICE_STORAGE_BASE}/${path}`);
-    audio.addEventListener("ended", () => resolve(), { once: true });
-    audio.addEventListener("error", () => resolve(), { once: true });
-    // Autoplay can be refused before the browser source has been interacted
-    // with; treat that the same as a failed load rather than hanging.
-    audio.play().catch(() => resolve());
-  });
+/** Plays a donor voice message, resolving when it ends, fails or stalls. */
+async function playVoiceMessage(path: string): Promise<void> {
+  await playAudioToEnd(new Audio(`${VOICE_STORAGE_BASE}/${path}`));
 }
 
 function triggerAlert(
