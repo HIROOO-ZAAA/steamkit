@@ -135,6 +135,11 @@ export async function POST(request: Request) {
       owner_id: auth.user.id,
       label,
       voicestudio_voice_id: voiceId,
+      // Stored as well as sent. The provider holds its own copy on the profile,
+      // but without this column every clone in the database reads as if it had
+      // been built without a transcript — which is exactly how the clone that
+      // was actually re-transcribing on the GPU on every alert stayed invisible.
+      reference_transcript: refText,
       consent_at: new Date().toISOString(),
     })
     .select("id, label, voicestudio_voice_id, consent_at, created_at")
