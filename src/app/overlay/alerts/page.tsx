@@ -31,6 +31,7 @@ type VoiceSettings = {
   speed: number;
   provider?: string | null;
   voice_id?: string | null;
+  cloning_enabled?: boolean;
 };
 
 type OverlayConfig = AlertSettings & VoiceSettings & {
@@ -42,6 +43,23 @@ type OverlayConfig = AlertSettings & VoiceSettings & {
 
 const PHOTO_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-photos`;
 const VOICE_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-voice`;
+
+/**
+ * How long past its configured duration an alert may be held open waiting for
+ * its voice.
+ *
+ * An alert is now cleared only once the speech has finished AND its duration has
+ * elapsed, because clearing on duration alone meant a real donation's alert
+ * vanished ~6s before the voice arrived. That needs a ceiling: `speak()` always
+ * resolves in theory, and an overlay pinned open by one stuck synthesis would
+ * silently stop showing every later donation.
+ *
+ * Comfortably above the synthesis deadline. SYNTHESIS_TIMEOUT_MS is 12s and
+ * ALERT_PLAYBACK_BUDGET_MS is 15s, so anything past that is already abnormal --
+ * 30s is far enough not to fire in normal operation and near enough that a
+ * failure is bounded.
+ */
+const SPEECH_HOLD_CAP_S = 30;
 
 /**
  * `speechSynthesis.getVoices()` is populated asynchronously -- Chromium returns
@@ -537,24 +555,59 @@ function triggerAlert(
   const tier = pickTier(tiers, tip);
   const effective = applyTier(settings, tier);
   setCurrentAlert(tip);
-  // Match the configured duration exactly from the moment the alert appears.
-  // Speech may continue after it fades, but the queue stays locked until the
-  // voice finishes so consecutive donations are never spoken over each other.
+
+  // The alert stays until the voice has finished AND the configured duration has
+  // passed -- whichever is later.
+  //
+  // Duration alone was wrong, and measurably so. This creator has
+  // duration_seconds = 2, while a fresh synthesis on this machine measures
+  // 6.8-7.7s. Clearing at 2s meant every real donation's alert vanished about
+  // six seconds before its voice arrived, so the overlay appeared not to read at
+  // all. A TEST sounded fine only because its text was already in the tts-cache
+  // and came back in 1.3s, inside the 2s window -- which made the feature look
+  // broken for real money and working for the button.
+  //
+  // Duration is still a floor, so a long silent alert is still possible by
+  // choice, and SPEECH_HOLD_CAP_MS stops a synthesis that never settles from
+  // pinning the overlay open forever.
+  let speechSettled = false;
+  let durationElapsed = false;
+  let cleared = false;
+  const clearWhenReady = () => {
+    if (cleared || !speechSettled || !durationElapsed) return;
+    cleared = true;
+    setCurrentAlert((current) => (current?.id === tip.id ? null : current));
+  };
   window.setTimeout(() => {
-    setCurrentAlert((current) => current?.id === tip.id ? null : current);
-  }, ALERT_DURATION_SECONDS * 1000);
+    durationElapsed = true;
+    clearWhenReady();
+  }, Math.max(0, effective.duration_seconds ?? ALERT_DURATION_SECONDS) * 1000);
+  window.setTimeout(() => {
+    cleared = true;
+    setCurrentAlert((current) => (current?.id === tip.id ? null : current));
+  }, (Math.max(0, effective.duration_seconds ?? ALERT_DURATION_SECONDS) + SPEECH_HOLD_CAP_S) * 1000);
+  const onSpeechDone = () => {
+    speechSettled = true;
+    clearWhenReady();
+    onSpeechComplete();
+  };
 
   if (effective.sound_url) playSoundEffect(effective.sound_url);
 
   const finish = () => {
-    if (!shouldSpeakAlert(effective.tts_enabled, tip.payment_status === "test")) {
-      onSpeechComplete();
+    // Selecting a clone is an explicit request for donation speech. Keep that
+    // opt-in effective for real payments too; TEST already speaks regardless
+    // of the tier toggle, which otherwise made tests work while paid alerts
+    // stayed silent on a tier with a stale false value.
+    const ttsEnabled = effective.tts_enabled || voice.cloning_enabled === true;
+    if (!shouldSpeakAlert(ttsEnabled, tip.payment_status === "test")) {
+      onSpeechDone();
       return;
     }
     const tpl = effective.message_template ??
       "Thank you {name} for {amount} {currency}!";
     void speak(speechText(tpl, tip), voice, (effective.tts_volume ?? 100) / 100)
-      .finally(onSpeechComplete);
+      .finally(onSpeechDone);
   };
 
   // Play an uploaded donor recording first, then read the donation template
@@ -594,6 +647,7 @@ export default function AlertsOverlayPage({
   const [lookupError, setLookupError] = useState(false);
 
   const seenRef = useRef<Set<string>>(new Set());
+  const baselineSeenRef = useRef<Set<string>>(new Set());
   const queueDepthRef = useRef<number>(0);
   const sinceRef = useRef<string>(new Date().toISOString());
   const bootedAtRef = useRef<string>(new Date().toISOString());
@@ -617,9 +671,18 @@ export default function AlertsOverlayPage({
    */
   const refreshConfigRef = useRef<(() => Promise<boolean>) | null>(null);
 
-  function enqueueTip(tip: Tip) {
-    if (!tip?.id || seenRef.current.has(tip.id)) return;
-    if ((tip.created_at ?? "") < bootedAtRef.current) return;
+  function enqueueTip(tip: Tip, receivedLive = false) {
+    if (!tip?.id) return;
+    if (seenRef.current.has(tip.id)) {
+      // The startup poll may have marked a just-arrived payment as historical
+      // before its realtime callback runs. Let that callback enqueue it once.
+      if (!receivedLive || !baselineSeenRef.current.delete(tip.id)) return;
+    }
+    // A live payment event can carry the bank bot's original Telegram
+    // timestamp, which may be older than this overlay session. It is still a
+    // newly received donation and must be announced. The polling path keeps
+    // the age guard so it does not replay older alerts on reconnect.
+    if (!receivedLive && (tip.created_at ?? "") < bootedAtRef.current) return;
     seenRef.current.add(tip.id);
     setQueue((q) => [...q, tip]);
     // Count only: the tip carries the donor's name and message, neither of which
@@ -727,6 +790,7 @@ export default function AlertsOverlayPage({
             speed: cfg.speed,
             provider: cfg.provider,
             voice_id: cfg.voice_id,
+            cloning_enabled: cfg.cloning_enabled,
           };
 
           tiersRef.current = Array.isArray(cfg.tiers) ? cfg.tiers : [];
@@ -796,7 +860,7 @@ export default function AlertsOverlayPage({
                 // cannot use the previous tier's duration or speech template.
                 void (async () => {
                   if (tip.payment_status === "test" && !(await refreshOverlayConfig())) return;
-                  enqueueTip(tip);
+                  enqueueTip(tip, true);
                 })();
               }
             },
@@ -817,7 +881,12 @@ export default function AlertsOverlayPage({
           if (disposed) return;
           if (existing && existing.length > 0) {
             sinceRef.current = (existing[existing.length - 1] as Tip).created_at;
-            (existing as Tip[]).forEach((t) => seenRef.current.add(t.id));
+            (existing as Tip[]).forEach((tip) => {
+              if (!seenRef.current.has(tip.id)) {
+                seenRef.current.add(tip.id);
+                baselineSeenRef.current.add(tip.id);
+              }
+            });
           } else {
             sinceRef.current = new Date(Date.now() - 10 * 60 * 1000).toISOString();
           }
@@ -857,7 +926,12 @@ export default function AlertsOverlayPage({
               if (!(await refreshOverlayConfig())) return;
             }
             sinceRef.current = (recent[recent.length - 1] as Tip).created_at;
-            (recent as Tip[]).forEach(enqueueTip);
+            // `receivedLive` is passed explicitly because forEach supplies the array index
+            // as the second argument. That made it a NUMBER here: tip 0 got 0
+            // (falsy) and every later tip got 1, 2, 3... (truthy), so the whole
+            // poll path was silently treated as a live realtime event and the
+            // age guard and the seen-set re-add both stopped working.
+            (recent as Tip[]).forEach((tip) => enqueueTip(tip, false));
           } catch (error) {
             if (!pollFailureLogged) {
               pollFailureLogged = true;
