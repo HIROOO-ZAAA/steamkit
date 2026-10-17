@@ -161,6 +161,56 @@ describe("speechText", () => {
     const out = speechText("Hi {name}", tip({ message: "Yo" }));
     assert.doesNotMatch(out, /\{|\}/);
   });
+
+  // The budget: `/api/tts/synthesize` allows 10s for the whole request and the
+  // overlay gives up at 12s. Measured round trips were 8.5s at 168 characters
+  // and 12.0s at 348, so a donor who wrote a full 300-character message is the
+  // one whose alert goes silent.
+  describe("the synthesis budget", () => {
+    const LONG = "word ".repeat(80).trim(); // 399 chars, over the 300-char cap
+
+    it("keeps a long message inside the budget", () => {
+      const out = speechText("Thanks {name}", tip({ message: LONG }));
+      assert.ok(
+        out.length <= 200,
+        `spoken line was ${out.length} chars, which measures past the 10s budget`,
+      );
+    });
+
+    it("marks the cut rather than pretending the message ended there", () => {
+      assert.match(speechText("Thanks {name}", tip({ message: LONG })), /…$/);
+    });
+
+    it("clips at a word boundary, so the tail is not mispronounced", () => {
+      // Distinct words, so "stopped on a boundary" is a checkable claim.
+      const words = Array.from({ length: 80 }, (_, i) => `w${i}`);
+      const out = speechText("Thanks {name}", tip({ message: words.join(" ") }));
+      const spoken = out.slice("Thanks Sophea ".length);
+
+      // A cut mid-word is pronounced as its own syllable, so the character
+      // before the ellipsis must end a word that exists in the original.
+      const kept = spoken.slice(0, -1).split(" ");
+      assert.match(kept.at(-1) ?? "", /\w$/);
+      assert.deepEqual(kept, words.slice(0, kept.length));
+    });
+
+    it("clips a {message} template the same way, since it carries the same words", () => {
+      const out = speechText("Thanks {name}: {message}", tip({ message: LONG }));
+      assert.ok(out.length <= 200);
+      assert.match(out, /…$/);
+    });
+
+    it("does not clip a message that already fits", () => {
+      const short = "Great stream, love the new setup";
+      assert.equal(speechText("Thanks {name}", tip({ message: short })), `Thanks Sophea ${short}`);
+      assert.doesNotMatch(speechText("Thanks {name}", tip({ message: short })), /…/);
+    });
+
+    it("trims the punctuation left stranded at the cut", () => {
+      const out = speechText("Thanks {name}", tip({ message: "alpha bravo charlie, delta echo foxtrot golf hotel india juliet kilo lima," }));
+      assert.doesNotMatch(out, /[,\s]…$/);
+    });
+  });
 });
 
 describe("highlightText", () => {

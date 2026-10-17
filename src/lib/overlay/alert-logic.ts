@@ -83,6 +83,50 @@ export function parseTemplate(template: string, tip: TemplateTip): string {
 }
 
 /**
+ * How much of a donor's message may be spoken, in characters.
+ *
+ * Synthesis is not free: measured against the running route on this machine,
+ * the round trip is roughly flat to ~100 characters and then climbs about one
+ * second per 30 more.
+ *
+ *     47 chars   7.7s
+ *    108 chars   7.0s
+ *    168 chars   8.5s
+ *    228 chars   9.4s
+ *    348 chars  12.0s
+ *
+ * `/api/tts/synthesize` budgets the WHOLE request -- the clone attempt and the
+ * stock-voice retry -- at 10s, and the overlay aborts at 12s. A 300-character
+ * donor message, which `POST /api/alerts/test` accepts today, lands between the
+ * two. The route's clone attempt is cut off with nothing left for the retry, so
+ * it answers after the overlay has already given up, and the overlay falls back
+ * to the OS voice -- which on this box has no Khmer voice installed. The result
+ * is that the longer the message, the more certainly the alert says nothing at
+ * all. That is why a donor who wrote more was heard less.
+ *
+ * The cap is on the SPOKEN line only. The overlay still renders the message in
+ * full underneath the alert, so nothing the donor wrote is hidden from the
+ * stream -- it is simply not all read out.
+ */
+const MAX_SPOKEN_MESSAGE_CHARS = 120;
+
+/**
+ * Cuts `text` to `limit` characters, preferring a word boundary.
+ *
+ * A word boundary is cosmetic, not a nicety: a cut mid-word is pronounced as a
+ * separate syllable, so the tail of the sentence comes out wrong.
+ */
+function clipToWords(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(" ");
+  // Only worth retreating to a boundary when one is close enough that we are
+  // not throwing away most of the allowance to save a few characters.
+  const body = lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return `${body.replace(/[\s,.;:!?-]+$/, "")}…`;
+}
+
+/**
  * The line the alert speaks: the rendered acknowledgement, then the donor's own
  * message when the template does not already carry it.
  *
@@ -91,14 +135,21 @@ export function parseTemplate(template: string, tip: TemplateTip): string {
  * here rather than editing the creator's stored template keeps that content
  * theirs to change, and the placeholder check keeps a template that *does* use
  * `{message}` from being spoken twice.
+ *
+ * The donor's message is clipped to `MAX_SPOKEN_MESSAGE_CHARS` in both cases,
+ * before it is rendered either way, because a `{message}` template carries the
+ * same words by the same route and has the same budget problem. The clip is on
+ * the SPOKEN line only: the overlay still renders the message in full beneath
+ * the alert, so nothing the donor wrote is hidden from the stream.
  */
 export function speechText(template: string, tip: TemplateTip): string {
-  const acknowledgement = parseTemplate(template, tip).trim();
-  const message = (tip.message ?? "").trim();
+  const message = clipToWords((tip.message ?? "").trim(), MAX_SPOKEN_MESSAGE_CHARS);
+  if (!message) return parseTemplate(template, tip).trim();
   // Exactly the token `parseTemplate` substitutes, so the two agree: anything
   // parseTemplate leaves literal is not a placeholder, and must not silence the
   // donor's message.
-  if (!message || template.includes("{message}")) return acknowledgement;
+  if (template.includes("{message}")) return parseTemplate(template, { ...tip, message }).trim();
+  const acknowledgement = parseTemplate(template, tip).trim();
   return acknowledgement ? `${acknowledgement} ${message}` : message;
 }
 
