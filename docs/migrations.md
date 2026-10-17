@@ -16,7 +16,7 @@ when something broke:
 | What | Consequence |
 |---|---|
 | `20261019000000_profiles_identity_columns.sql` read `profiles.full_name`, a column no file creates | `42701`, and because a failed migration is a transaction that rolls back, it aborted the paste **and every migration after it** |
-| `20261019000011_voice_clones.sql` built an RLS policy and a trigger on `voice_clones.user_id` after three earlier files renamed that column to `owner_id` | `42703` on every statement touching the table, forever, and no later file repaired it |
+| `20261019000011_voice_clones_provider_swap.sql` built an RLS policy and a trigger on `voice_clones.user_id` after three earlier files renamed that column to `owner_id` | `42703` on every statement touching the table, forever, and no later file repaired it |
 | `20261001160000_telegram_device_linking.sql` indexed one column while its `ON CONFLICT` named two | `42P10` at the moment a payment notification was claimed |
 | `20261010000005` and `...007` ran `delete from public.tips` inside a `SECURITY DEFINER` function granted to `authenticated` | any signed-in user could permanently erase every tip on their account, including paid ones |
 
@@ -60,7 +60,7 @@ Order matters and is not obvious:
    creates — `profiles`, `tips`, `tip_settings`, `donation_goals`, `spin_wheels`,
    `raffles`, `raffle_entries`, `subathons`, `telegram_connections`,
    `subscription_tiers`. Skip it and the replay dies at
-   `20261001110000_bakong_payment_flow.sql` line 71 on `alter table public.tips`.
+   `20261001110000_payments_bakong_flow.sql` line 71 on `alter table public.tips`.
 2. **Then every migration in filename order.** Timestamps are unique, so plain
    alphabetical sort is the intended order.
 3. **Then the PostgREST cache reload** — each migration that adds a column ends

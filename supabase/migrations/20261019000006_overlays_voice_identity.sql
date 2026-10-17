@@ -6,7 +6,7 @@
 -- specific SpeechSynthesisVoice and fell back to `utterance.lang` alone.
 --
 -- These columns stay server-derived from `voice_settings` and are never part
--- of a share code -- see 20261018000000_profile_share_codes.sql, which
+-- of a share code -- see 20261018000000_profiles_share_codes.sql, which
 -- deliberately excludes voice_settings because cloning consent must not
 -- transfer between creators.
 

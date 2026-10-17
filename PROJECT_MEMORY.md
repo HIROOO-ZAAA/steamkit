@@ -48,7 +48,7 @@ StreamKit is a real-time creator tipping platform with livestream alerts, OBS ov
   `src/app/api/payments/khqr/route.ts`, but the migration that adds them
   (`20261019000003_donation_photo_moderation.sql`, referenced in a types.ts
   comment) was never written to disk. Backfilled idempotently in
-  `20261019000009_donation_voice_messages.sql`.
+  `20261019000009_alerts_donation_voice_messages.sql`.
 
 ## Alert Tiers (2026-10-14)
 - `alert_settings` is no longer one row per creator. It is one row per
@@ -370,7 +370,7 @@ later with a hosted provider instead of a local GPU sidecar. Do not assume the
 - **Samples are never stored here.** The file goes to ElevenLabs and only the
   returned `voice_id` is kept. There is no second copy of biometric audio to
   protect, and no `voice-clones` bucket.
-- Migration `20261017000000_elevenlabs_voice_clones.sql` renames
+- Migration `20261017000000_voice_clones_table.sql` renames
   `voice_clones.user_id` -> `owner_id`, adds `elevenlabs_voice_id`, makes
   `consent_at` **nullable** (…011 defaulted it to `now()`, so every row looked
   consented the instant it landed), drops `reference_audio_path` /
@@ -636,8 +636,8 @@ project's own service client when you need rows.
 ## Voice clones: two migrations were pasted out of order (2026-10-16)
 `POST /api/voice-clones` cloned successfully upstream and then answered
 `503 "Could not save that voice. Try again."` — the Supabase insert, not the
-provider. Cause: `20261017000000_voicestudio_backend_swap.sql` was applied (it
-ADDS `voicestudio_voice_id`) but `20261017000000_elevenlabs_voice_clones.sql`
+provider. Cause: `20261017000004_voice_voicestudio_backend.sql` was applied (it
+ADDS `voicestudio_voice_id`) but `20261017000000_voice_clones_table.sql`
 (which renames `user_id` → `owner_id`) was not, so the live table is the …011
 shape plus one column.
 
@@ -656,7 +656,7 @@ more landmines sit behind it, all invisible from the error:
 3. `streamkit_assert_own_voice_clone()` (BEFORE trigger on `voice_settings`)
    reads `voice_clones.user_id`, so the rename breaks every voice_settings write.
 
-`20261017000001_voice_clones_owner_id.sql` fixes all four and is idempotent. It
+`20261017000002_voice_clones_owner_id.sql` fixes all four and is idempotent. It
 deliberately does **not** recreate `streamkit_resolve_overlay` the way the
 ElevenLabs migration does: that snapshot predates the alert-tier rework, and the
 live function is the only authority on its own return type.
@@ -778,7 +778,7 @@ If lint ever explodes to five figures, suspect an unignored build directory
 before suspecting your own changes.
 
 ## Server-authoritative draws (2026-10-16)
-Migration `20261015000000_server_authoritative_draws.sql`. All three clients now
+Migration `20261015000002_draws_server_authoritative.sql`. All three clients now
 call the database instead of `Math.random()`:
 - `streamkit_draw_raffle_winner` -- row-locked, refuses a re-draw, records the
   winner and sets status 'completed'.
@@ -1144,7 +1144,7 @@ Two things worth not rediscovering.
 ## alert_settings.tts_volume made every save fail
 
 The Alerts settings page writes `tts_volume`. Migration
-20261019000013_alert_tts_volume.sql adds the column, and that migration has to
+20261019000013_alerts_tts_volume.sql adds the column, and that migration has to
 be pasted into the Supabase SQL editor by hand like every other one here. Until
 it is, PostgREST rejects the WHOLE write:
 

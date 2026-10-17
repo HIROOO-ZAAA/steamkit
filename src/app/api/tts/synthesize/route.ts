@@ -12,7 +12,7 @@
 //      `data` yields undefined and this route 401s on every valid token.
 //   2. voice_clones has: id, owner_id, voicestudio_voice_id, consent_at.
 //      (renamed from elevenlabs_voice_id by migration
-//      20261017000000_voicestudio_backend_swap.sql)
+//      20261017000004_voice_voicestudio_backend.sql)
 //   3. The tts-cache bucket is private — NOT public like donation-voice, or
 //      creator voice clones would be served from a public Supabase domain.
 //   4. The client is the service-role one (lib/supabase/admin). This route is

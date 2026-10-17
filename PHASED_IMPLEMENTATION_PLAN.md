@@ -165,7 +165,7 @@ overload instead of replacing the old signature.
    the CLI is not installed and there is no `project-ref`. Needs the user to
    install it and supply the project ref + access token.
 6. **Server-authoritative draws — code complete, unverified (2026-10-16).**
-   Migration `20261015000000_server_authoritative_draws.sql` plus client
+   Migration `20261015000002_draws_server_authoritative.sql` plus client
    rewiring in `dashboard/raffle`, `dashboard/spin-wheel` and
    `overlay/spin-wheel`. No `Math.random()` remains in any draw path. The raffle
    now persists entries to `raffle_entries` instead of React state, so "Reset"

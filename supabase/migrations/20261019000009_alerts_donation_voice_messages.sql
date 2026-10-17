@@ -1,7 +1,7 @@
 -- Donor voice messages.
 --
 -- The alerts dashboard has had a "VOICE MESSAGE INTRO" control since
--- 20261019000007_alert_tiers.sql: it writes `alert_voice_intro.enabled` and
+-- 20261019000007_alerts_tiers.sql: it writes `alert_voice_intro.enabled` and
 -- `alert_voice_intro.template`, and `streamkit_resolve_overlay` returns both.
 -- Nothing ever read them, because donors had no way to send a voice message
 -- in the first place. This migration adds the missing data path.

@@ -9,10 +9,10 @@
 -- beyond "-".
 --
 -- WHAT HAPPENED
---   20261019000009_donation_voice_messages.sql installed a BEFORE INSERT
+--   20261019000009_alerts_donation_voice_messages.sql installed a BEFORE INSERT
 --   trigger on public.tips whose body reads new.payment_transaction_id.
 --   That column is created by an earlier migration,
---   20261001110000_bakong_payment_flow.sql, and it is NOT present on this
+--   20261001110000_payments_bakong_flow.sql, and it is NOT present on this
 --   database.
 --
 --   Confirmed by probing the live schema on 2026-10-16:

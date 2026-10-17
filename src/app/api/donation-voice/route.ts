@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 const BUCKET = "donation-voice";
 // Matches the bucket's file_size_limit in
-// supabase/migrations/20261019000009_donation_voice_messages.sql. Kept in sync
+// supabase/migrations/20261019000009_alerts_donation_voice_messages.sql. Kept in sync
 // deliberately: the upload is rejected here before it can reach the bucket.
 const MAX_BYTES = 1_500_000;
 const MAX_SECONDS = 30;

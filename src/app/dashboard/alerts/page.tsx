@@ -1474,7 +1474,7 @@ export default function AlertSettingsPage() {
                 {!volumeColumnReady && (
                   <p className={styles.hintText}>
                     Not saved yet. This needs{" "}
-                    <code>supabase/migrations/20261019000013_alert_tts_volume.sql</code> pasted into the
+                    <code>supabase/migrations/20261019000013_alerts_tts_volume.sql</code> pasted into the
                     Supabase SQL editor. Everything else on this page saves without it.
                   </p>
                 )}

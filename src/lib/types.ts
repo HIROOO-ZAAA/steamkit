@@ -38,7 +38,7 @@ export interface CreatorTipSettings {
   min_amount_khr: number;
   created_at: string;
   updated_at: string | null;
-  // Added by supabase/migrations/20261016000000_tip_page_currency_settings.sql
+  // Added by supabase/migrations/20261016000000_tips_page_currency_settings.sql
   usd_presets?: number[] | null;
   khr_presets?: number[] | null;
   usd_max_amount?: number | null;
@@ -48,7 +48,7 @@ export interface CreatorTipSettings {
   aba_link_usd?: string | null;
   aba_link_khr?: string | null;
   bakong_id?: string | null;
-  // Added by supabase/migrations/20261019000004_merchant_display_name.sql
+  // Added by supabase/migrations/20261019000004_tips_merchant_display_name.sql
   merchant_display_name?: string | null;
 }
 
@@ -164,7 +164,7 @@ export interface Tip {
   photo_path?: string | null;
   photo_status?: DonationPhotoStatus | null;
   // Donor voice message. Unlike a photo this is not moderated: it plays as part
-  // of the alert. Added by 20261019000009_donation_voice_messages.sql.
+  // of the alert. Added by 20261019000009_alerts_donation_voice_messages.sql.
   voice_path?: string | null;
   voice_duration_seconds?: number | null;
 }

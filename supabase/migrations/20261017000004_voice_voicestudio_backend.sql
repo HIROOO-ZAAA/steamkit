@@ -1,4 +1,4 @@
--- supabase/migrations/20261017000000_voicestudio_backend_swap.sql
+-- supabase/migrations/20261017000004_voice_voicestudio_backend.sql
 --
 -- Swaps voice_clones from referencing an ElevenLabs voice_id to a
 -- VoiceStudio-local voice_id. Written defensively since the column name on

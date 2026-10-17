@@ -716,7 +716,7 @@ export default function TipsSettingsPage() {
             Per-currency presets, payment methods and merchant links cannot be saved
             yet. Run{" "}
             <code className="rounded bg-black/40 px-1.5 py-0.5 text-xs">
-              supabase/migrations/20261016000000_tip_page_currency_settings.sql
+              supabase/migrations/20261016000000_tips_page_currency_settings.sql
             </code>{" "}
             in the Supabase SQL editor, then reload this page.
           </p>

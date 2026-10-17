@@ -7,7 +7,7 @@
 //   20261019000000_profiles_identity_columns.sql read profiles.full_name, a
 //     column no file creates -> 42701, aborting the paste and every migration
 //     after it.
-//   20261019000011_voice_clones.sql built an RLS policy and a trigger on
+//   20261019000011_voice_clones_provider_swap.sql built an RLS policy and a trigger on
 //     voice_clones.user_id after three earlier migrations had renamed that
 //     column to owner_id -> 42703 on every statement touching the table.
 //   20261001160000_telegram_device_linking.sql indexed one column while its
@@ -24,8 +24,8 @@
 // The checks are deliberately narrow. A verifier that cries wolf gets ignored,
 // so anything this cannot decide confidently is reported as a note.
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, existsSync as existsSyncSync } from "node:fs";
+import { join, relative } from "node:path";
 
 const DIR = join(process.cwd(), "supabase", "migrations");
 const SCHEMA_FILE = join(process.cwd(), "supabase_schema.sql");
@@ -355,6 +355,49 @@ for (const f of [...files, "supabase_schema.sql"]) {
       note(`${f}: non-ASCII in a comment (line ${i + 1}) — survives a paste as mojibake`);
     }
   });
+}
+
+// ── 6. Every migration filename mentioned in the repo must resolve ───────────
+// Renaming migrations is routine; forgetting to update the comment or doc that
+// points at the old name is not, and a reference to a file that no longer exists
+// sends the next person looking for something that was deleted on purpose.
+// Three names are expected to be missing: the project's notes record them as
+// referenced-but-never-written, which is itself worth knowing.
+const KNOWN_MISSING = new Set([
+  "20261019000003_donation_photo_moderation.sql",
+  "20261016000000_voice_clone_duration.sql",
+  "20261016000001_remove_voice_cloning.sql",
+]);
+const onDiskNames = new Set(files);
+const referenced = new Map();
+{
+  const SKIP = new Set(["node_modules", ".next", ".git", ".vscode"]);
+  const TEXT = /\.(ts|tsx|mjs|js|md|sql|json|txt)$/i;
+  const scan = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(e.name)) continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) scan(p);
+      else if (TEXT.test(e.name)) {
+        const text = readFileSync(p, "utf8");
+        for (const m of text.matchAll(/\b(20\d{12}[a-z0-9_]*\.sql)\b/gi)) {
+          const name = m[1];
+          if (onDiskNames.has(name) || KNOWN_MISSING.has(name)) continue;
+          if (!referenced.has(name)) referenced.set(name, new Set());
+          referenced.get(name).add(relative(process.cwd(), p));
+        }
+      }
+    }
+  };
+  for (const dir of ["src", "scripts", "docs", "supabase", "tests"]) {
+    if (existsSyncSync(dir)) scan(dir);
+  }
+}
+for (const [name, where] of [...referenced].sort()) {
+  fail(
+    [...where][0],
+    `references ${name}, which does not exist. Named in: ${[...where].join(", ")}`,
+  );
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────
