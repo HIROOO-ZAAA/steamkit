@@ -235,6 +235,28 @@ function playbackLog(label: string, outcome: string, errorName?: string): void {
 }
 
 /**
+ * Says an alert was spoken, at a level OBS will keep.
+ *
+ * `console.error` for a success is not a mistake. OBS's browser source forwards
+ * ONLY uncaught errors to its log — measured on a live obs-browser 2.26.9
+ * session, where seven uncaught errors were recorded and zero `console.warn`
+ * lines were. So while every success was reported at warn level, a working
+ * alert and a browser source that is capturing nothing at all looked exactly
+ * the same: both silent. That is the trap this feature has already fallen into
+ * twice, and it is why "the overlay says nothing" was so hard to tell apart from
+ * "OBS is not listening".
+ *
+ * This is the line to read after a test donation. It reports only what was
+ * decided, never the alert text or a token.
+ */
+function spokenVerdict(path: string, audible: boolean): void {
+  console.error(
+    `[alerts] SPOKEN path=${path} audioOutputAvailable=${audible} ` +
+      "— if you cannot hear this, the audio did not reach your speakers",
+  );
+}
+
+/**
  * The Web Audio implementation of `AudioDecoder`.
  *
  * One context for the life of the page: a browser caps how many may exist, and
@@ -328,11 +350,12 @@ async function ensureAudioOutputKnown(): Promise<boolean> {
   } catch {
     audioOutputAvailable = false;
   }
-  // Stated plainly: a creator cannot act on "playback=ended", because it looks
-  // identical to success. And at error level, because this is the single line
-  // that explains a completely silent stream, and OBS keeps only errors.
+  // Stated plainly, and at error level either way: a creator cannot act on
+  // "playback=ended", because it looks identical to success. And OBS keeps only
+  // errors, so reporting `true` at warn level would leave a working setup and a
+  // dead browser source indistinguishable in the one log a creator reads.
   const line = `audio output available=${audioOutputAvailable}`;
-  if (audioOutputAvailable) console.warn(`[alerts] ${line}`);
+  if (audioOutputAvailable) spokenVerdict("probe", true);
   else alertFault(`${line} — nothing this page plays will be audible`);
   return audioOutputAvailable;
 }
@@ -405,13 +428,17 @@ async function playAudioUrl(url: string): Promise<boolean> {
       );
       return false;
     }
+    if (outcome === "ended") spokenVerdict("webaudio", audible);
     return outcome === "ended";
   }
 
   const outcome = await playAudioToEnd(new Audio(url), PLAYBACK_TIMEOUT_MS, (d) =>
     playbackLog(`tts ${where}`, d.outcome, d.errorName),
   );
-  if (outcome === "ended") return true;
+  if (outcome === "ended") {
+    spokenVerdict("element", audible);
+    return true;
+  }
 
   // Audio works but this element still failed — a corrupt body, a dead
   // connection. Web Audio fetches and decodes independently, so this is a real
@@ -419,6 +446,7 @@ async function playAudioUrl(url: string): Promise<boolean> {
   console.warn(`[alerts] tts element playback=${outcome}; retrying through Web Audio`);
   const fallback = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
   playbackLog(`tts-webaudio ${where}`, fallback);
+  if (fallback === "ended") spokenVerdict("webaudio-after-element", audible);
   return fallback === "ended";
 }
 
