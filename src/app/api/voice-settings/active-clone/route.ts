@@ -60,6 +60,22 @@ export async function POST(req: Request) {
     }
   }
 
+  // Choosing a clone for alerts should activate spoken alerts as well. The
+  // Alerts page still offers an explicit switch to mute them afterward.
+  if (cloneId) {
+    const { error: alertSettingsError } = await admin
+      .from("alert_settings")
+      .update({ tts_enabled: true })
+      .eq("user_id", user.id);
+
+    if (alertSettingsError) {
+      return NextResponse.json(
+        { error: "Could not enable spoken alerts. Please try again." },
+        { status: 500 },
+      );
+    }
+  }
+
   // Update-then-insert rather than upsert: whether `user_id` carries a unique
   // index is a schema detail this route should not depend on.
   const { data: existing } = await admin

@@ -274,6 +274,45 @@
   margin-bottom: 16px;
 }
 
+.ttsSettings {
+  padding: 14px;
+  background: #111C32;
+  border: 1px solid #1E3350;
+  border-radius: 8px;
+}
+
+.ttsTitle {
+  margin: 0 0 12px;
+  color: #F8FAFC;
+  font: 700 14px/1.3 'Rajdhani', sans-serif;
+  letter-spacing: 1px;
+}
+
+.ttsToggleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: #F8FAFC;
+  font: 600 13px 'Inter', sans-serif;
+  cursor: pointer;
+}
+
+.ttsToggleRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: #10B981;
+}
+
+.ttsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.ttsGrid .controlGroup { margin-bottom: 10px; }
+.ttsGrid .select:disabled { opacity: .8; cursor: default; }
+
 .label {
   font-family: 'Rajdhani', sans-serif;
   font-size: 14px;
@@ -956,6 +995,8 @@
   .khmerFontGrid {
     flex-direction: column;
   }
+
+  .ttsGrid { grid-template-columns: 1fr; }
 }
 
 

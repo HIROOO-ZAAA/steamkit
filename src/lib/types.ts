@@ -60,6 +60,7 @@ export interface AlertSettings {
   animation_type: "bounce" | "fade" | "slide" | "zoom";
   font_color: string;
   tts_enabled: boolean;
+  tts_volume?: number;
   created_at: string;
 }
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { amountForTierTest, parseTemplate, speechText, splitSpeechText } from "@/lib/overlay/alert-logic";
 import styles from "./alerts.module.css";
 import {
   Copy,
@@ -53,6 +54,13 @@ type TierRow = {
   sort_order: number;
 };
 
+type VoiceCloneOption = {
+  id: string;
+  label: string;
+  consent_at: string | null;
+  voicestudio_voice_id: string | null;
+};
+
 /** Raw `alert_settings` row as it comes back from the table. */
 type RawAlertSettings = {
   tier_id?: string | null;
@@ -73,6 +81,7 @@ type RawAlertSettings = {
   font_size?: number | null;
   font_weight?: string | null;
   tts_enabled?: boolean | null;
+  tts_volume?: number | null;
   donor_avatar?: string | null;
   text_delay?: number | null;
 };
@@ -118,8 +127,15 @@ export default function AlertSettingsPage() {
   const [testSending, setTestSending] = useState(false);
   const [toast, setToast] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
+  const [testPreview, setTestPreview] = useState<{
+    amount: number;
+    currency: "USD" | "KHR";
+    message: string;
+    template: string;
+  } | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const showToast = (msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -152,17 +168,28 @@ export default function AlertSettingsPage() {
   const [template, setTemplate] = useState("អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency}");
   const [alertDuration, setAlertDuration] = useState(6);
   const [textDelay, setTextDelay] = useState(2);
-  // `tts_enabled` has existed on alert_settings since the first alert
-  // migration but nothing ever wrote it, so the overlay spoke unconditionally.
   const [ttsEnabled, setTtsEnabled] = useState(true);
-
-  // Voice message intro. Stored once per creator in `alert_voice_intro`, not
-  // per tier, which is what makes it globally synced by construction: there is
-  // only ever one copy, so every tier necessarily reads the same value.
-  const [voiceIntroEnabled, setVoiceIntroEnabled] = useState(false);
-  const [voiceIntroTemplate, setVoiceIntroTemplate] = useState(
-    "{name} sent a voice message",
-  );
+  const [ttsVolume, setTtsVolume] = useState(100);
+  /**
+   * Whether `alert_settings.tts_volume` exists yet.
+   *
+   * `tts_volume` arrives with migration 20261019000013, which has to be pasted
+   * into the Supabase SQL editor by hand. Until it is, PostgREST rejects the
+   * WHOLE write with
+   *
+   *   Could not find the 'tts_volume' column of 'alert_settings' in the schema cache
+   *
+   * which is what made every save on this page fail -- duration, template, TTS
+   * toggle, colours, all of it -- while the form still looked saved. One
+   * optional column was costing a creator the entire settings page.
+   *
+   * So the column is probed once and omitted from the write until it exists,
+   * rather than letting its absence block the other twenty-two.
+   */
+  const [volumeColumnReady, setVolumeColumnReady] = useState(true);
+  const [voiceClones, setVoiceClones] = useState<VoiceCloneOption[]>([]);
+  const [activeCloneId, setActiveCloneId] = useState<string | null>(null);
+  const [voiceSettingsError, setVoiceSettingsError] = useState("");
 
   // Audio
   const [selectedSoundUrl, setSelectedSoundUrl] = useState(SOUND_PRESETS[0].url);
@@ -225,6 +252,7 @@ export default function AlertSettingsPage() {
     setFontWeight(row.font_weight || "700");
     setTextAnimation(row.text_animation || "wiggle");
     setTtsEnabled(row.tts_enabled ?? true);
+    setTtsVolume(Math.max(0, Math.min(100, row.tts_volume ?? 100)));
     if (row.donor_avatar) setSelectedAvatar(row.donor_avatar);
   }
 
@@ -255,12 +283,25 @@ export default function AlertSettingsPage() {
         setObsUrl(`${base}/overlay/alerts?token=${cred.token}`);
       }
 
-      const { data: settings } = await supabase
+      const { data: settings, error: settingsError } = await supabase
         .from("alert_settings")
         .select("*")
         .eq("user_id", user.id);
 
       if (cancelled) return;
+      if (settingsError) {
+        setSaveErr(`Could not load saved alert settings: ${settingsError.message}`);
+        return;
+      }
+
+      // Probed separately from the `select("*")` above, which cannot answer the
+      // question: a creator with no settings rows gets an empty array, and an
+      // empty array is missing every column just as loudly as a present one.
+      const { error: volumeProbe } = await supabase
+        .from("alert_settings")
+        .select("tts_volume")
+        .limit(1);
+      if (!cancelled) setVolumeColumnReady(!volumeProbe);
 
       // One row per (creator, tier): the base row has tier_id null, each tier
       // may have its own. The form always shows the base row on first load.
@@ -273,7 +314,23 @@ export default function AlertSettingsPage() {
       setTierRows({ ...perTier, base });
       applySettingsRow(base);
 
-      const { data: tierData } = await supabase
+      const [{ data: cloneRows }, { data: voicePrefs }] = await Promise.all([
+        supabase
+          .from("voice_clones")
+          .select("id, label, consent_at, voicestudio_voice_id")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("voice_settings")
+          .select("cloning_enabled, active_clone_id")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      if (cancelled) return;
+      setVoiceClones((cloneRows ?? []) as VoiceCloneOption[]);
+      setActiveCloneId(voicePrefs?.cloning_enabled ? voicePrefs.active_clone_id ?? null : null);
+
+      const { data: tierData, error: tierError } = await supabase
         .from("alert_tiers")
         .select("*")
         .eq("user_id", user.id)
@@ -281,19 +338,12 @@ export default function AlertSettingsPage() {
         .order("min_amount_usd", { ascending: true });
 
       if (cancelled) return;
+      if (tierError) {
+        setSaveErr(`Could not load alert tiers: ${tierError.message}`);
+        return;
+      }
       setTiers((tierData ?? []) as TierRow[]);
 
-      const { data: intro } = await supabase
-        .from("alert_voice_intro")
-        .select("enabled, template")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (cancelled) return;
-      if (intro) {
-        setVoiceIntroEnabled(intro.enabled ?? false);
-        if (intro.template) setVoiceIntroTemplate(intro.template);
-      }
       setSettingsLoaded(true);
     }
 
@@ -329,6 +379,27 @@ export default function AlertSettingsPage() {
 
   const handleRemoveBannedWord = (word: string) => {
     setBannedWords(bannedWords.filter((w) => w !== word));
+  };
+
+  const handleVoiceCloneChange = async (cloneId: string | null) => {
+    setVoiceSettingsError("");
+    try {
+      const response = await fetch("/api/voice-settings/active-clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloneId }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        setVoiceSettingsError(payload?.error ?? "Could not update the alert voice.");
+        return;
+      }
+      setActiveCloneId(cloneId);
+      if (cloneId) setTtsEnabled(true);
+      showToast("Alert voice updated.");
+    } catch {
+      setVoiceSettingsError("Could not update the alert voice. Check your connection.");
+    }
   };
 
   const handleSoundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -377,46 +448,158 @@ export default function AlertSettingsPage() {
     audioRef.current = audio;
   };
 
-  const showCanvasPreview = () => {
+  const playPreviewSpeech = async (): Promise<"clone" | "fallback" | "failed"> => {
+    if (!ttsEnabled) return "failed";
+
+    const parsedUrl = obsUrl ? new URL(obsUrl, window.location.origin) : null;
+    const overlayToken = parsedUrl?.searchParams.get("token");
+    const amountNumber = Number(selectedAmount.replace(/[^0-9.]/g, "")) ||
+      (currency === "KHR" ? 1000 : 10);
+    const text = speechText(template, {
+      tipper_name: "John",
+      amount: amountNumber,
+      currency,
+      message: customTestMessage || "This is a test alert. No payment was made.",
+    });
+
+    let usedFallback = false;
+    const chunks = splitSpeechText(text);
+    if (chunks.length === 0) return "failed";
+    for (const chunk of chunks) {
+      let chunkPlayed = false;
+      if (overlayToken) {
+        try {
+          const response = await fetch("/api/tts/synthesize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ overlayToken, text: chunk }),
+            signal: AbortSignal.timeout(12_000),
+          });
+          const payload = (await response.json().catch(() => null)) as {
+            audioUrl?: string;
+            fellBack?: boolean;
+          } | null;
+
+          if (response.ok && payload?.audioUrl) {
+            const audio = new Audio(payload.audioUrl);
+            audio.volume = ttsVolume / 100;
+            speechAudioRef.current?.pause();
+            speechAudioRef.current = audio;
+            let finishPlayback = () => {};
+            let playbackFailed = false;
+            const playbackEnded = new Promise<void>((resolve) => {
+              const timer = setTimeout(() => {
+                playbackFailed = true;
+                resolve();
+              }, 30_000);
+              finishPlayback = () => {
+                clearTimeout(timer);
+                resolve();
+              };
+              audio.addEventListener("ended", finishPlayback, { once: true });
+              audio.addEventListener("error", () => {
+                playbackFailed = true;
+                finishPlayback();
+              }, { once: true });
+            });
+            try {
+              await audio.play();
+              await playbackEnded;
+              if (!playbackFailed) {
+                usedFallback ||= payload.fellBack === true;
+                chunkPlayed = true;
+              }
+            } catch {
+              // Browser autoplay restrictions can still block this preview.
+              finishPlayback();
+            }
+          }
+        } catch {
+          // Fall back for this chunk if synthesis or playback is unavailable.
+        }
+      }
+
+      if (!chunkPlayed && "speechSynthesis" in window) {
+        const browserPlayed = await new Promise<boolean>((resolve) => {
+          const utterance = new SpeechSynthesisUtterance(chunk.replace(/<[^>]+>/g, ""));
+          utterance.volume = ttsVolume / 100;
+          utterance.onend = () => resolve(true);
+          utterance.onerror = () => resolve(false);
+          window.speechSynthesis.speak(utterance);
+        });
+        if (!browserPlayed) return "failed";
+        usedFallback = true;
+        chunkPlayed = true;
+      }
+      if (!chunkPlayed) return "failed";
+    }
+    return usedFallback ? "fallback" : "clone";
+  };
+
+  const showCanvasPreview = async (
+    readAloud = true,
+    durationSeconds = alertDuration,
+  ): Promise<"clone" | "fallback" | "failed" | "disabled"> => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     setIsTesting(true);
     setPreviewKey((k) => k + 1);
-    previewTimerRef.current = setTimeout(() => setIsTesting(false), alertDuration * 1000);
     playAlertSound();
+    previewTimerRef.current = setTimeout(() => setIsTesting(false), Math.max(0, durationSeconds) * 1000);
+
+    if (readAloud && ttsEnabled) {
+      try {
+        return await playPreviewSpeech();
+      } catch {
+        return "failed";
+      }
+    }
+    return "disabled";
   };
 
-  const handleTriggerTest = async (mode: "live" | "preview") => {
-    if (mode === "preview") {
-      showCanvasPreview();
-      showToast(`${activeTierName} alert was sent to Preview!`);
-      return;
-    }
-
+  const handleTriggerTest = async () => {
+    if (testSending) return;
     setTestSending(true);
     try {
-      const amountNumber = Number(selectedAmount.replace(/[^0-9.]/g, "")) || (currency === "KHR" ? 1000 : 10);
-
-      const res = await fetch("/api/alerts/test", {
+      const selectedTestAmount = Number(selectedAmount.replace(/[^0-9.]/g, "")) ||
+        (currency === "KHR" ? 1000 : 10);
+      const amount = amountForTierTest(
+        selectedTestAmount,
+        currency,
+        activeTierId,
+        tiers.map(({ id, ...tier }) => ({ ...tier, tier_id: id, configured: true })),
+      );
+      const savedTestSettings = activeTierId
+        ? tierRows[activeTierId] ?? tierRows.base
+        : tierRows.base;
+      const savedTestDuration = savedTestSettings?.duration_seconds ?? 6;
+      const testMessage = customTestMessage || "This is a test alert. No payment was made.";
+      const response = await fetch("/api/alerts/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "John",
-          amount: amountNumber,
+          amount,
           currency,
-          message: customTestMessage || "This is a test alert. No payment was made.",
+          message: testMessage,
         }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(`Test failed: ${data.error || res.statusText}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showToast(`Test failed: ${payload.error || response.statusText}`);
         return;
       }
-      showToast(`${activeTierName} alert was sent to Live!`);
+      setTestPreview({
+        amount,
+        currency,
+        message: testMessage,
+        template: savedTestSettings?.message_template || template,
+      });
+      void showCanvasPreview(false, savedTestDuration);
+      showToast(`${activeTierName} test alert sent to OBS. It uses saved alert settings.`);
     } catch {
-      showToast("Could not reach the test API.");
+      showToast("Could not send the test alert. Check your connection and OBS overlay.");
     } finally {
       setTestSending(false);
-      showCanvasPreview();
     }
   };
 
@@ -481,7 +664,7 @@ export default function AlertSettingsPage() {
     setActiveTierId(id);
     // Load that tier's saved row into the form, or reset to defaults when the
     // tier has never been saved.
-    applySettingsRow(id ? tierRows[id] ?? null : tierRows.base ?? null);
+    applySettingsRow(id ? tierRows[id] ?? tierRows.base ?? null : tierRows.base ?? null);
   }
 
   /** The row to persist for whichever profile is selected. */
@@ -508,9 +691,37 @@ export default function AlertSettingsPage() {
       font_size: fontSize,
       font_weight: fontWeight,
       tts_enabled: ttsEnabled,
+      // Omitted rather than sent-and-rejected while the column is absent. See
+      // `volumeColumnReady`.
+      ...(volumeColumnReady ? { tts_volume: ttsVolume } : {}),
       updated_at: new Date().toISOString(),
     };
   }
+
+  /**
+   * A save that reports success must be a save that happened.
+   *
+   * Compared field by field, because PostgREST answers 200 for a write that
+   * matched no rows: that reads as "saved" and changes nothing, which is how a
+   * broken save page can look like a working one.
+   *
+   * Takes `unknown` because the select list is built at runtime, so the typed
+   * client cannot infer the row shape.
+   */
+  const verifySaved = (
+    saved: unknown,
+    payload: Record<string, unknown>,
+    missing: string,
+  ): void => {
+    const row = (saved ?? null) as Record<string, unknown> | null;
+    if (!row) throw new Error(`Settings were not saved. ${missing}`);
+    if (
+      row.duration_seconds !== payload.duration_seconds ||
+      row.message_template !== payload.message_template ||
+      row.tts_enabled !== payload.tts_enabled ||
+      (volumeColumnReady && row.tts_volume !== payload.tts_volume)
+    ) throw new Error("Settings were not saved with the requested alert duration and speech settings.");
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -527,45 +738,43 @@ export default function AlertSettingsPage() {
         .from("alert_settings")
         .select("id")
         .eq("user_id", user.id);
-      const { data: existing } = activeTierId
+      const { data: existing, error: lookupError } = activeTierId
         ? await existingQuery.eq("tier_id", activeTierId).maybeSingle()
         : await existingQuery.is("tier_id", null).maybeSingle();
+      if (lookupError) throw lookupError;
 
-      const { error } = existing
-        ? await supabase
+      const payload = buildSettingsPayload(user.id);
+      const savedFields: string = volumeColumnReady
+        ? "id, duration_seconds, message_template, tts_enabled, tts_volume"
+        : "id, duration_seconds, message_template, tts_enabled";
+      if (existing) {
+        const { data: saved, error } = await supabase
             .from("alert_settings")
-            .update({ ...buildSettingsPayload(user.id) })
+            .update(payload)
             .eq("id", existing.id)
-        : await supabase
+            .select(savedFields)
+            .maybeSingle();
+        if (error) throw error;
+        verifySaved(saved, payload, "No matching settings row was updated.");
+      } else {
+        const { data: saved, error } = await supabase
             .from("alert_settings")
-            .insert(buildSettingsPayload(user.id));
-
-      if (error) throw error;
-
-      // One row per creator, so this upsert targets the primary key. Because it
-      // is creator-scoped rather than tier-scoped, saving from any tier
-      // updates the same row -- that is the "global sync" behaviour.
-      const { error: introError } = await supabase
-        .from("alert_voice_intro")
-        .upsert(
-          {
-            user_id: user.id,
-            enabled: voiceIntroEnabled,
-            template: voiceIntroTemplate,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
-      if (introError) throw introError;
+            .insert(payload)
+            .select(savedFields)
+            .single();
+        if (error) throw error;
+        verifySaved(saved, payload, "No settings row was created.");
+      }
 
       setTierRows((prev) => {
         const next = { ...prev };
-        if (activeTierId) next[activeTierId] = buildSettingsPayload(user.id);
+        if (activeTierId) next[activeTierId] = payload;
+        else next.base = payload;
         return next;
       });
 
       const scope = activeTierName === "Default Setting" ? "" : ` to "${activeTierName}"`;
-      setSaveMsg(`Settings saved${scope}. Your OBS overlay now uses these settings.`);
+      setSaveMsg(`Settings saved${scope}. OBS will apply these settings shortly.`);
       showToast(`Settings saved${scope}.`);
     } catch (cause) {
       setSaveErr(cause instanceof Error ? cause.message : "Failed to save settings.");
@@ -578,10 +787,15 @@ export default function AlertSettingsPage() {
   const hasAvatarTag = template.includes("{avatar}");
 
   const highlightNameAndAmount = (text: string) => {
-    const escapedAmount = selectedAmount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const displayAmount = isTesting && testPreview
+      ? testPreview.currency === "KHR"
+        ? testPreview.amount.toLocaleString()
+        : `$${testPreview.amount.toFixed(2)}`
+      : selectedAmount;
+    const escapedAmount = displayAmount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const re = new RegExp(`(John|${escapedAmount}\\s*${currency})`, "g");
     return text.split(re).map((seg, i) =>
-      seg === "John" || seg.startsWith(selectedAmount) ? (
+      seg === "John" || seg.startsWith(displayAmount) ? (
         <span key={i} style={{ color: highlightColor, fontWeight: 800 }}>{seg}</span>
       ) : (
         <React.Fragment key={i}>{seg}</React.Fragment>
@@ -590,12 +804,20 @@ export default function AlertSettingsPage() {
   };
 
   const renderTemplatePreview = () => {
-    const avatarParts = template.split("{avatar}");
+    const previewTemplate = isTesting && testPreview ? testPreview.template : template;
+    const displayAmount = isTesting && testPreview
+      ? testPreview.currency === "KHR"
+        ? testPreview.amount.toLocaleString()
+        : testPreview.amount.toFixed(2)
+      : selectedAmount;
+    const displayCurrency = isTesting && testPreview ? testPreview.currency : currency;
+    const avatarParts = previewTemplate.split("{avatar}");
     return avatarParts.map((part, idx) => {
       const parsed = part
-        .replace("{name}", "John")
-        .replace("{amount}", selectedAmount)
-        .replace("{currency}", currency);
+        .replaceAll("{name}", "John")
+        .replaceAll("{amount}", displayAmount)
+        .replaceAll("{currency}", displayCurrency)
+        .replaceAll("{message}", isTesting && testPreview ? testPreview.message : customTestMessage);
       return (
         <React.Fragment key={idx}>
           {idx > 0 && showDonorAvatar && (
@@ -764,7 +986,7 @@ export default function AlertSettingsPage() {
                       {renderTemplatePreview()}
                     </div>
 
-                    {customTestMessage && (
+                    {(isTesting && testPreview ? testPreview.message : customTestMessage) && (
                       <div
                         className={styles.donorSubMessage}
                         style={{
@@ -773,7 +995,7 @@ export default function AlertSettingsPage() {
                           fontSize: `${Math.max(13, fontSize * 0.42)}px`,
                         }}
                       >
-                        &quot;{customTestMessage}&quot;
+                        &quot;{isTesting && testPreview ? testPreview.message : customTestMessage}&quot;
                       </div>
                     )}
                   </div>
@@ -850,10 +1072,19 @@ export default function AlertSettingsPage() {
 
               {/* Trigger Buttons & Design Mode Switch */}
               <div className={styles.actionGroupEnd}>
-                <button type="button" className={styles.btnPrimary} onClick={() => void handleTriggerTest("live")} disabled={testSending}>
-                  {testSending ? <Loader2 size={14} className={styles.spinIcon} /> : <Play size={14} />} TEST
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={() => void handleTriggerTest()}
+                  disabled={testSending}
+                >
+                  {testSending ? <Loader2 size={14} className={styles.spinIcon} /> : <Play size={14} />}
+                  {testSending ? "SENDING..." : "TEST"}
                 </button>
-                <button type="button" className={styles.btnSecondary} onClick={() => void handleTriggerTest("preview")}>
+                <button type="button" className={styles.btnSecondary} onClick={() => {
+                  setTestPreview(null);
+                  void showCanvasPreview(false);
+                }}>
                   <Eye size={14} /> PREVIEW
                 </button>
 
@@ -869,7 +1100,7 @@ export default function AlertSettingsPage() {
             </div>
 
             <p className={styles.hintText} style={{ marginTop: "12px" }}>
-              Previews will only show here. To view events in your streaming software, save your settings then click the &quot;Test&quot; button above.
+              TEST sends the alert to the OBS browser source using saved settings. Save changes first. PREVIEW shows the animation here without speech.
             </p>
           </div>
 
@@ -1134,71 +1365,90 @@ export default function AlertSettingsPage() {
               </div>
             )}
 
-            {/* Message Template Textarea */}
-            <div className={styles.controlGroup}>
-              <label className={styles.label}>MESSAGE TEMPLATE</label>
-              <textarea
-                rows={2}
-                className={styles.textarea}
-                value={template}
-                onChange={(e) => setTemplate(e.target.value)}
-              />
-              <div className={styles.previewFormattedBox}>
-                <span className={styles.label}>TEMPLATE PREVIEW:</span>
-                <p>អរគុណ John សម្រាប់ការឧបត្ថម 10.00USD</p>
-              </div>
-            </div>
-
-            {/* Read Message Aloud (TTS) */}
-            <div className={styles.controlGroup}>
-              <label className={styles.label}>READ MESSAGE ALOUD (TTS)</label>
-              <label className={styles.checkboxLabel}>
+            {/* Text-to-speech settings */}
+            <section className={`${styles.controlGroup} ${styles.ttsSettings}`} aria-labelledby="tts-settings-heading">
+              <h3 id="tts-settings-heading" className={styles.ttsTitle}>TEXT-TO-SPEECH SETTINGS</h3>
+              <label className={styles.ttsToggleRow}>
                 <input
                   type="checkbox"
                   checked={ttsEnabled}
                   onChange={(e) => setTtsEnabled(e.target.checked)}
                 />
-                <span>SPEAK THE MESSAGE TEMPLATE ON EACH ALERT</span>
+                <span>Enable Text-to-Speech</span>
               </label>
-              <p className={styles.hintText}>
-                Reads the message template above using your voice settings
-                (language, pitch, speed) from the Voice Clone page.
-              </p>
-              {ttsEnabled ? null : (
-                <p className={styles.hintText}>
-                  Alerts stay silent. This is independent of the voice message
-                  intro, which can still announce donor voice messages.
-                </p>
-              )}
-            </div>
-
-            {/* Voice Message Intro — global across every tier */}
-            <div className={styles.controlGroup}>
-              <label className={styles.label}>VOICE MESSAGE INTRO</label>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={voiceIntroEnabled}
-                  onChange={(e) => setVoiceIntroEnabled(e.target.checked)}
+              <div className={styles.ttsGrid}>
+                <label className={styles.controlGroup}>
+                  <span className={styles.label}>TTS Engine</span>
+                  <select className={styles.select} value="voicestudio" disabled>
+                    <option value="voicestudio">VoiceStudio</option>
+                  </select>
+                </label>
+                <label className={styles.controlGroup}>
+                  <span className={styles.label}>Voice Clone</span>
+                  <select
+                    className={styles.select}
+                    value={activeCloneId ?? ""}
+                    disabled={!settingsLoaded}
+                    onChange={(event) => void handleVoiceCloneChange(event.target.value || null)}
+                  >
+                    <option value="">Automatic voice selection</option>
+                    {voiceClones.filter((clone) => clone.consent_at && clone.voicestudio_voice_id).map((clone) => (
+                      <option key={clone.id} value={clone.id}>{clone.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className={styles.controlGroup}>
+                <label className={styles.label}>TTS Message Template</label>
+                <textarea
+                  rows={3}
+                  className={styles.textarea}
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  placeholder="{name} donated {amount} {currency}: {message}"
                 />
-                <span>ANNOUNCE DONOR VOICE MESSAGES</span>
-              </label>
-              <textarea
-                rows={2}
-                className={styles.textarea}
-                style={{ marginTop: 8 }}
-                value={voiceIntroTemplate}
-                onChange={(e) => setVoiceIntroTemplate(e.target.value)}
-              />
+                <p className={styles.hintText}>
+                  Use &#123;name&#125;, &#123;amount&#125;, &#123;currency&#125;, and &#123;message&#125;. This is also the alert&apos;s on-screen message template.
+                </p>
+                <div className={styles.previewFormattedBox}>
+                  <span className={styles.label}>PREVIEW</span>
+                  <p>
+                    {parseTemplate(template, {
+                      tipper_name: "John",
+                      amount: Number(selectedAmount.replace(/[^0-9.]/g, "")) || (currency === "KHR" ? 1000 : 10),
+                      currency,
+                      message: customTestMessage || "This is a test alert message.",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <div className={styles.controlGroup}>
+                <label className={styles.label}>TTS Volume ({ttsVolume}%)</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={ttsVolume}
+                  className={styles.slider}
+                  onChange={(e) => setTtsVolume(Number(e.target.value))}
+                />
+                {/* Not a disabled control with no explanation: the reason is a
+                    database column that has to be added by hand, and saying so is
+                    the only thing that makes the next step obvious. */}
+                {!volumeColumnReady && (
+                  <p className={styles.hintText}>
+                    Not saved yet. This needs{" "}
+                    <code>supabase/migrations/20261019000013_alert_tts_volume.sql</code> pasted into the
+                    Supabase SQL editor. Everything else on this page saves without it.
+                  </p>
+                )}
+              </div>
               <p className={styles.hintText}>
-                Plays the donor&apos;s recording at the start of their alert, before
-                the message is read aloud. Unlike photos, voice messages are not
-                held for approval, so anything a donor sends reaches the stream.
-                Works even when Read Message Aloud is off, so lower tiers can stay
-                silent while still hearing voice messages announced. Saved once for
-                your whole account, so it applies to every tier automatically.
+                Save settings, then click TEST under On-Screen Alert Preview to send the alert to OBS. OBS reads the saved template with the selected clone; the configured fallback is used if clone speech fails.
               </p>
-            </div>
+              {voiceSettingsError && <p className={styles.hintText} role="alert" style={{ color: "#FCA5A5" }}>{voiceSettingsError}</p>}
+              {!ttsEnabled && <p className={styles.hintText}>Donation alert speech is disabled for this tier.</p>}
+            </section>
 
             {/* Alert Duration & Text Delay */}
             <div className={styles.controlGroup}>

@@ -14,6 +14,7 @@ export type AlertSettings = {
   animation_type: "bounce" | "fade" | "slide" | "zoom";
   font_color: string;
   tts_enabled: boolean;
+  tts_volume?: number;
   layout?: string;
   image_url?: string;
   image_scale?: number;
@@ -48,6 +49,7 @@ export type AlertTier = {
   sound_url?: string | null;
   font_color?: string | null;
   tts_enabled?: boolean | null;
+  tts_volume?: number | null;
   layout?: string | null;
   image_url?: string | null;
   image_scale?: number | null;
@@ -82,53 +84,42 @@ export function parseTemplate(template: string, tip: TemplateTip): string {
     .replace(/\{avatar\}/g, "");
 }
 
-/**
- * How much of a donor's message may be spoken, in characters.
- *
- * Synthesis is not free: measured against the running route on this machine,
- * the round trip is roughly flat to ~100 characters and then climbs about one
- * second per 30 more.
- *
- *     47 chars   7.7s
- *    108 chars   7.0s
- *    168 chars   8.5s
- *    228 chars   9.4s
- *    348 chars  12.0s
- *
- * `/api/tts/synthesize` budgets the WHOLE request -- the clone attempt and the
- * stock-voice retry -- at 10s, and the overlay aborts at 12s. A 300-character
- * donor message, which `POST /api/alerts/test` accepts today, lands between the
- * two. The route's clone attempt is cut off with nothing left for the retry, so
- * it answers after the overlay has already given up, and the overlay falls back
- * to the OS voice -- which on this box has no Khmer voice installed. The result
- * is that the longer the message, the more certainly the alert says nothing at
- * all. That is why a donor who wrote more was heard less.
- *
- * The cap is on the SPOKEN line only. The overlay still renders the message in
- * full underneath the alert, so nothing the donor wrote is hidden from the
- * stream -- it is simply not all read out.
- */
-const MAX_SPOKEN_MESSAGE_CHARS = 120;
+const MAX_SPEECH_CHUNK_CHARS = 110;
 
-/**
- * Cuts `text` to `limit` characters, preferring a word boundary.
- *
- * A word boundary is cosmetic, not a nicety: a cut mid-word is pronounced as a
- * separate syllable, so the tail of the sentence comes out wrong.
- */
-function clipToWords(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  const cut = text.slice(0, limit);
-  const lastSpace = cut.lastIndexOf(" ");
-  // Only worth retreating to a boundary when one is close enough that we are
-  // not throwing away most of the allowance to save a few characters.
-  const body = lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut;
-  return `${body.replace(/[\s,.;:!?-]+$/, "")}…`;
+/** Split speech into bounded requests, preferring sentence and word boundaries. */
+export function splitSpeechText(text: string, limit = MAX_SPEECH_CHUNK_CHARS): string[] {
+  let remaining = text.trim();
+  if (!remaining) return [];
+  const chunks: string[] = [];
+
+  while (remaining.length > limit) {
+    const sentenceCut = Math.max(
+      remaining.lastIndexOf(". ", limit),
+      remaining.lastIndexOf("! ", limit),
+      remaining.lastIndexOf("? ", limit),
+      remaining.lastIndexOf("។ ", limit),
+    );
+    const cut = sentenceCut >= 0
+      ? Math.min(limit, sentenceCut + 1)
+      : remaining.lastIndexOf(" ", limit);
+    let unicodeSafeCut = 0;
+    for (const point of Array.from(remaining)) {
+      if (unicodeSafeCut + point.length > limit) break;
+      unicodeSafeCut += point.length;
+    }
+    const safeCut = cut >= limit * 0.55 ? cut : unicodeSafeCut;
+    const chunk = remaining.slice(0, safeCut).trim();
+    if (!chunk) break;
+    chunks.push(chunk);
+    remaining = remaining.slice(safeCut).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
 }
 
 /**
- * The line the alert speaks: the rendered acknowledgement, then the donor's own
- * message when the template does not already carry it.
+ * The complete line the alert speaks: the rendered acknowledgement, then the
+ * donor's own message when the template does not already carry it.
  *
  * `parseTemplate` alone drops the message for any template without `{message}`,
  * which is what shipped: the donor's words never reached the voice. Appending
@@ -136,20 +127,20 @@ function clipToWords(text: string, limit: number): string {
  * theirs to change, and the placeholder check keeps a template that *does* use
  * `{message}` from being spoken twice.
  *
- * The donor's message is clipped to `MAX_SPOKEN_MESSAGE_CHARS` in both cases,
- * before it is rendered either way, because a `{message}` template carries the
- * same words by the same route and has the same budget problem. The clip is on
- * the SPOKEN line only: the overlay still renders the message in full beneath
- * the alert, so nothing the donor wrote is hidden from the stream.
+ * Long lines are split into bounded synthesis requests by `splitSpeechText`;
+ * the spoken text itself remains complete.
  */
 export function speechText(template: string, tip: TemplateTip): string {
-  const message = clipToWords((tip.message ?? "").trim(), MAX_SPOKEN_MESSAGE_CHARS);
+  const message = (tip.message ?? "").trim();
   if (!message) return parseTemplate(template, tip).trim();
-  // Exactly the token `parseTemplate` substitutes, so the two agree: anything
-  // parseTemplate leaves literal is not a placeholder, and must not silence the
-  // donor's message.
-  if (template.includes("{message}")) return parseTemplate(template, { ...tip, message }).trim();
-  const acknowledgement = parseTemplate(template, tip).trim();
+  // Keep the alert acknowledgement first even when a creator put {message}
+  // somewhere in the middle of their template. This guarantees the requested
+  // donor -> amount -> viewer message order and prevents speaking it twice.
+  const acknowledgementTemplate = template.replace(/\{message\}/g, "");
+  const acknowledgement = parseTemplate(acknowledgementTemplate, { ...tip, message: "" })
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/[,;:]\s*$/, "")
+    .trim();
   return acknowledgement ? `${acknowledgement} ${message}` : message;
 }
 
@@ -183,6 +174,54 @@ export function pickTier(
     tip.currency === "KHR" ? Number(t.min_amount_khr) : Number(t.min_amount_usd);
 
   return eligible.reduce((best, t) => (key(t) > key(best) ? t : best));
+}
+
+/**
+ * Chooses a test amount that exercises the tier currently selected in the
+ * dashboard. Without this, TEST's preview amount can cross a different tier
+ * threshold and OBS correctly applies that other tier's duration/template.
+ */
+export function amountForTierTest(
+  selectedAmount: number,
+  currency: "USD" | "KHR",
+  targetTierId: string | null,
+  tiers: AlertTier[],
+): number {
+  const step = currency === "KHR" ? 1 : 0.01;
+  const threshold = (item: AlertTier) => Number(
+    currency === "KHR" ? item.min_amount_khr : item.min_amount_usd,
+  );
+  const ordered = [...tiers].sort((a, b) =>
+    threshold(a) - threshold(b) || a.sort_order - b.sort_order,
+  );
+  const normalizedAmount = Number.isFinite(selectedAmount) && selectedAmount > 0
+    ? selectedAmount
+    : currency === "KHR" ? 1000 : 10;
+
+  if (targetTierId === null) {
+    const firstTierMinimum = ordered.length > 0 ? threshold(ordered[0]!) : null;
+    if (firstTierMinimum === null) return normalizedAmount;
+    // Use a positive amount just below the first tier threshold. If a tier
+    // starts at zero, no positive donation can target base settings.
+    const baseMax = Math.max(step, firstTierMinimum - step);
+    return Math.min(normalizedAmount, baseMax);
+  }
+
+  const targetIndex = ordered.findIndex((item) => item.tier_id === targetTierId);
+  if (targetIndex < 0) return normalizedAmount;
+  const targetMinimum = Math.max(step, threshold(ordered[targetIndex]!));
+  const nextHigherMinimum = ordered
+    .slice(targetIndex + 1)
+    .map(threshold)
+    .find((minimum) => minimum > threshold(ordered[targetIndex]!));
+  const targetMaximum = nextHigherMinimum === undefined
+    ? Number.POSITIVE_INFINITY
+    : nextHigherMinimum - step;
+
+  // Duplicate adjacent thresholds cannot be uniquely selected by donation
+  // amount; choosing their shared minimum lets pickTier's stable ordering win.
+  if (targetMaximum < targetMinimum) return targetMinimum;
+  return Math.min(Math.max(normalizedAmount, targetMinimum), targetMaximum);
 }
 
 /**

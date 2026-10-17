@@ -1,7 +1,7 @@
 // src/app/dashboard/voice-settings/voice-settings-page-with-test.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./voice-settings.module.css";
 
@@ -86,17 +86,21 @@ export default function VoiceSettingsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const [refText, setRefText] = useState("");
   const [clipDuration, setClipDuration] = useState<number | null>(null);
   const [consented, setConsented] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const [testPhrase, setTestPhrase] = useState(DEFAULT_TEST_PHRASE);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [activeCloneId, setActiveCloneId] = useState<string | null>(null);
+  const [spokenAlertsEnabled, setSpokenAlertsEnabled] = useState(true);
   const [savingActiveId, setSavingActiveId] = useState<string | null>(null);
 
   /**
@@ -114,6 +118,16 @@ export default function VoiceSettingsPage() {
       .maybeSingle();
     if (queryError) return;
     setActiveCloneId(data?.cloning_enabled ? data.active_clone_id ?? null : null);
+
+    const { data: alertRows } = await supabase
+      .from("alert_settings")
+      .select("tts_enabled")
+      .eq("user_id", userData.user.id);
+    setSpokenAlertsEnabled(
+      alertRows !== null &&
+        alertRows !== undefined &&
+        !alertRows.some((row) => row.tts_enabled === false),
+    );
   }, [supabase]);
 
   const handleSetActive = useCallback(
@@ -132,6 +146,7 @@ export default function VoiceSettingsPage() {
           return;
         }
         setActiveCloneId(cloneId);
+        if (cloneId) setSpokenAlertsEnabled(true);
       } finally {
         setSavingActiveId(null);
       }
@@ -170,13 +185,22 @@ export default function VoiceSettingsPage() {
     })();
   }, [supabase, applyRows, loadActiveClone]);
 
-  // Newest first, so the first usable clone is the one alerts speak with.
-  // Derived during render: this page holds one list and the cost is a `find`.
-  // Mirrors the synthesis route's choice — the two must agree, or this page
-  // advertises a voice nothing speaks with.
-  const activeVoice = clones.find((c) => c.consent_at && c.voicestudio_voice_id) ?? null;
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
+
+  // Match /api/tts/synthesize: an explicitly selected speakable clone wins;
+  // otherwise alerts use the newest speakable clone automatically.
+  const activeVoice =
+    clones.find(
+      (clone) =>
+        clone.id === activeCloneId && clone.consent_at && clone.voicestudio_voice_id,
+    ) ?? clones.find((clone) => clone.consent_at && clone.voicestudio_voice_id) ?? null;
 
   async function handleFileChange(picked: File | null) {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = picked ? URL.createObjectURL(picked) : null;
+    setPreviewUrl(previewUrlRef.current);
     setFile(picked);
     setClipDuration(null);
     if (picked) setClipDuration(await sampleDuration(picked));
@@ -229,9 +253,13 @@ export default function VoiceSettingsPage() {
 
       setLabel("");
       setFile(null);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      setPreviewUrl(null);
+      previewUrlRef.current = null;
       setRefText("");
       setClipDuration(null);
       setConsented(false);
+      setCreateOpen(false);
       await loadClones();
     } catch {
       setError("Upload failed. Check your connection and try again.");
@@ -301,127 +329,88 @@ export default function VoiceSettingsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.headline}>Alert voices</h1>
-        <p className={styles.subhead}>
-          Add a voice to read your donation alerts out loud. Every clone needs a sample
-          and a confirmation that you have the right to use it.
-        </p>
+        <div>
+          <p className={styles.eyebrow}>Dashboard / Voice settings</p>
+          <h1 className={styles.headline}>Voice clones</h1>
+          <p className={styles.subhead}>Create a voice and choose which one reads your donation alerts.</p>
+        </div>
+        <button type="button" className={styles.primaryButton} onClick={() => { setError(null); setCreateOpen(true); }}>
+          <span aria-hidden="true">＋</span> Add voice clone
+        </button>
       </header>
 
-      <section className={styles.card}>
-        <h2 className={styles.cardTitle}>Add a voice</h2>
-        <form onSubmit={handleSubmit} className={styles.form}>
+      <section className={styles.card} aria-labelledby="tts-settings-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <p className={styles.eyebrow}>Alert audio</p>
+            <h2 id="tts-settings-title" className={styles.cardTitle}>Text-to-speech settings</h2>
+          </div>
+          <span className={spokenAlertsEnabled ? styles.badgeLive : styles.badgePending}>
+            {spokenAlertsEnabled ? "Speech enabled" : "Speech muted in Alerts"}
+          </span>
+        </div>
+        <div className={styles.settingsGrid}>
           <label className={styles.field}>
-            <span className={styles.label}>Voice name</span>
-            <input
-              className={styles.input}
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. My stream voice"
-              maxLength={80}
-              required
-            />
+            <span className={styles.label}>TTS engine</span>
+            <div className={styles.engineValue}>
+              <span className={styles.statusDot} /> StreamKit voice synthesis
+              <span className={styles.engineNote}>Automatic</span>
+            </div>
           </label>
-
           <label className={styles.field}>
-            <span className={styles.label}>
-              Sample audio ({SAMPLE_MIN_SECONDS}s–{SAMPLE_MAX_SECONDS}s, clean speech)
-            </span>
-            <input
+            <span className={styles.label}>Voice clone for donation alerts</span>
+            <select
               className={styles.input}
-              type="file"
-              accept="audio/*"
-              onChange={(e) => void handleFileChange(e.target.files?.[0] ?? null)}
-              required
-            />
-            {clipDuration !== null && (
-              <span className={styles.subhead}>{clipDuration.toFixed(1)}s</span>
-            )}
+              value={activeCloneId ?? ""}
+              onChange={(event) => void handleSetActive(event.target.value || null)}
+              disabled={savingActiveId !== null || loading}
+            >
+              <option value="">Automatic (newest ready voice)</option>
+              {clones.filter(isSpeakable).map((clone) => (
+                <option key={clone.id} value={clone.id}>{clone.label}</option>
+              ))}
+            </select>
           </label>
-
-          <label className={styles.field}>
-            <span className={styles.label}>
-              Words said in the sample ({SAMPLE_MIN_SECONDS}s–{SAMPLE_MAX_SECONDS}s clip)
-            </span>
-            <input
-              className={styles.input}
-              type="text"
-              value={refText}
-              onChange={(e) => setRefText(e.target.value)}
-              placeholder="Type exactly what is spoken in the sample audio"
-              maxLength={600}
-              required
-            />
-            <span className={styles.subhead}>
-              Required. Without this the engine transcribes your clip on the GPU during
-              every single alert, which is slower and fails outright on a busy GPU. It
-              also lets the sample run to {SAMPLE_MAX_SECONDS}s instead of 15s.
-            </span>
-          </label>
-
-          <label className={styles.consent}>
-            <input
-              type="checkbox"
-              checked={consented}
-              onChange={(e) => setConsented(e.target.checked)}
-            />
-            <span>
-              I confirm this is my own voice, or I have explicit consent from the
-              speaker to clone and use it for donation alerts.
-            </span>
-          </label>
-
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className={styles.primaryButton} disabled={submitting}>
-            {submitting ? "Cloning…" : "Create voice"}
-          </button>
-        </form>
+        </div>
+        <p className={styles.settingsHint}>
+          {activeVoice
+            ? `Donation alerts will use “${activeVoice.label}” when spoken alerts are enabled.`
+            : "Choose a ready clone to have donation alerts spoken in that voice. Your default voice remains available as a fallback."}
+        </p>
       </section>
 
       <section className={styles.card}>
-        <h2 className={styles.cardTitle}>Your voices</h2>
+        <div className={styles.sectionHeading}>
+          <div>
+            <p className={styles.eyebrow}>Voice library</p>
+            <h2 className={styles.cardTitle}>My voice clones</h2>
+          </div>
+          <span className={styles.count}>{clones.length} voices</span>
+        </div>
 
-        {!loading && !loadError && (
-          <p className={styles.subhead}>
-            Alerts read aloud with{" "}
-            <strong>{activeVoice ? `"${activeVoice.label}"` : "the default voice"}</strong>
-            .
+        {!loading && !loadError && activeVoice && !spokenAlertsEnabled && (
+          <p className={styles.notice} role="status">
+            The clone is selected, but spoken alerts are muted. Turn text-to-speech on in Alert Settings.
           </p>
         )}
+        <div className={styles.testPanel}>
+          <label className={styles.field}>
+            <span className={styles.label}>Preview phrase</span>
+            <input className={styles.input} type="text" value={testPhrase} onChange={(e) => setTestPhrase(e.target.value)} maxLength={300} />
+          </label>
+          {testError && <p className={styles.error} role="alert">{testError}</p>}
+        </div>
 
-        <label className={styles.field}>
-          <span className={styles.label}>Test phrase</span>
-          <input
-            className={styles.input}
-            type="text"
-            value={testPhrase}
-            onChange={(e) => setTestPhrase(e.target.value)}
-            maxLength={300}
-          />
-        </label>
-
-        {testError && (
-          <p className={styles.error} role="alert">
-            {testError}
-          </p>
-        )}
-
-        {loading && <p className={styles.subhead}>Loading…</p>}
-
-        {loadError && (
-          <p className={styles.error} role="alert">
-            {loadError}
-          </p>
-        )}
-
+        {loading && <p className={styles.subhead}>Loading voices…</p>}
+        {loadError && <p className={styles.error} role="alert">{loadError}</p>}
+        {error && !createOpen && <p className={styles.error} role="alert">{error}</p>}
         {!loading && !loadError && clones.length === 0 && (
-          <p className={styles.subhead}>No voices yet. Add one above to get started.</p>
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon} aria-hidden="true">◉</span>
+            <strong>No voice clones yet</strong>
+            <span>Add a short voice sample to create your first clone.</span>
+            <button type="button" className={styles.secondaryButton} onClick={() => setCreateOpen(true)}>Create a voice clone</button>
+          </div>
         )}
 
         <ul className={styles.voiceList}>
@@ -429,28 +418,32 @@ export default function VoiceSettingsPage() {
             const speakable = isSpeakable(clone);
             const isActive = activeCloneId === clone.id;
             return (
-              <li key={clone.id} className={styles.voiceRow}>
+              <li key={clone.id} className={`${styles.voiceRow} ${isActive ? styles.voiceSelected : ""}`}>
                 <div className={styles.voiceInfo}>
-                  <span className={styles.voiceName}>{clone.label}</span>
+                  <span className={styles.voiceAvatar} aria-hidden="true">{clone.label.slice(0, 1).toUpperCase()}</span>
+                  <div className={styles.voiceMeta}>
+                    <span className={styles.voiceName}>{clone.label}</span>
+                    <span className={styles.voiceCaption}>{speakable ? "Voice clone · VoiceStudio" : "Setup required before this voice can speak"}</span>
+                  </div>
                   <span className={speakable ? styles.badgeLive : styles.badgePending}>
-                    {!clone.consent_at
-                      ? "Pending consent"
-                      : speakable
-                        ? isActive
-                          ? "Ready — reads your alerts"
-                          : "Ready"
-                        : "No provider id"}
+                    {!clone.consent_at ? "Pending consent" : speakable ? isActive ? "Selected for alerts" : "Ready" : "Unavailable"}
                   </span>
                 </div>
                 <div className={styles.voiceActions}>
                   <button
                     className={styles.secondaryButton}
-                    onClick={() => void handleSetActive(isActive ? null : clone.id)}
+                    onClick={() =>
+                      void handleSetActive(
+                        isActive && spokenAlertsEnabled ? null : clone.id,
+                      )
+                    }
                     disabled={!speakable || savingActiveId !== null}
                     title={
                       speakable
                         ? isActive
-                          ? "Stop using a cloned voice; alerts fall back to the newest consented clone"
+                          ? spokenAlertsEnabled
+                            ? "Stop using a cloned voice for alerts"
+                            : "Enable spoken alerts with this voice"
                           : "Read your donation alerts in this voice"
                         : "Only a voice with consent and a provider id can speak"
                     }
@@ -458,7 +451,9 @@ export default function VoiceSettingsPage() {
                     {savingActiveId === clone.id
                       ? "Saving…"
                       : isActive
-                        ? "Stop using for alerts"
+                        ? spokenAlertsEnabled
+                          ? "Stop using for alerts"
+                          : "Enable spoken alerts"
                         : "Use for alerts"}
                   </button>
                   <button
@@ -488,6 +483,59 @@ export default function VoiceSettingsPage() {
           })}
         </ul>
       </section>
+
+      {createOpen && (
+        <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setCreateOpen(false); }}>
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="create-clone-title">
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 id="create-clone-title" className={styles.cardTitle}>Create voice clone</h2>
+                <p className={styles.modalSubhead}>Upload a clean recording to create a voice for your alerts.</p>
+              </div>
+              <button type="button" className={styles.closeButton} aria-label="Close" onClick={() => setCreateOpen(false)} disabled={submitting}>×</button>
+            </div>
+            <form onSubmit={handleSubmit} className={styles.form}>
+              <label
+                className={styles.dropZone}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  void handleFileChange(event.dataTransfer.files?.[0] ?? null);
+                }}
+              >
+                <input type="file" accept="audio/*" onChange={(e) => void handleFileChange(e.target.files?.[0] ?? null)} required={!file} />
+                <span className={styles.uploadIcon} aria-hidden="true">↑</span>
+                <strong>{file ? file.name : "Drop an audio sample here or browse"}</strong>
+                <span>{file ? `${clipDuration !== null ? `${clipDuration.toFixed(1)} seconds · ` : ""}${(file.size / (1024 * 1024)).toFixed(1)} MB` : `Audio file · ${SAMPLE_MIN_SECONDS}–${SAMPLE_MAX_SECONDS} seconds`}</span>
+                {file && <span className={styles.fileAction}>Choose a different recording</span>}
+              </label>
+              {previewUrl && (
+                <audio className={styles.audioPreview} controls preload="metadata" src={previewUrl}>
+                  Your browser does not support audio preview.
+                </audio>
+              )}
+              <label className={styles.field}>
+                <span className={styles.label}>Voice name</span>
+                <input className={styles.input} type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. My stream voice" maxLength={80} required />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Recording transcript</span>
+                <textarea className={`${styles.input} ${styles.textarea}`} value={refText} onChange={(e) => setRefText(e.target.value)} placeholder="Type the exact words spoken in your recording…" maxLength={600} required />
+                <span className={styles.helper}>This helps the clone sound clear and keeps alert speech fast.</span>
+              </label>
+              <label className={styles.consent}>
+                <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} />
+                <span>I own this voice or have the speaker’s permission to clone and use it.</span>
+              </label>
+              {error && <p className={styles.error} role="alert">{error}</p>}
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setCreateOpen(false)} disabled={submitting}>Cancel</button>
+                <button type="submit" className={styles.primaryButton} disabled={submitting}>{submitting ? "Creating…" : "Create voice clone"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

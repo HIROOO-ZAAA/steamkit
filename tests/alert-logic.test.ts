@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  amountForTierTest,
   applyTier,
   highlightText,
   parseTemplate,
   pickTier,
+  splitSpeechText,
   speechText,
   type AlertSettings,
   type AlertTier,
@@ -120,7 +122,7 @@ describe("speechText", () => {
 
   it("never speaks the message twice when the template already has {message}", () => {
     const out = speechText("Thanks {name}: {message}", tip({ message: "Great stream" }));
-    assert.equal(out, "Thanks Sophea: Great stream");
+    assert.equal(out, "Thanks Sophea Great stream");
     assert.equal(out.match(/Great stream/g)?.length, 1);
   });
 
@@ -135,6 +137,19 @@ describe("speechText", () => {
       speechText("Hi {name} { message }", tip({ message: "Yo" })),
       "Hi Sophea { message } Yo",
     );
+  });
+
+  it("keeps the viewer message after the donor and amount, and reads it in full", () => {
+    const message =
+      "Hello StreamKit, this is a voice test. Please read this entire message aloud.";
+    const out = speechText(
+      "{message} {name} donated {amount} dollars.",
+      tip({ tipper_name: "Alex", amount: 5, currency: "USD", message }),
+    );
+
+    assert.equal(out, `Alex donated 5.00 dollars. ${message}`);
+    assert.ok(out.indexOf("Alex") < out.indexOf("5.00"));
+    assert.ok(out.indexOf("5.00") < out.indexOf(message));
   });
 
   it("leaves a message-less donation as just the acknowledgement", () => {
@@ -162,54 +177,27 @@ describe("speechText", () => {
     assert.doesNotMatch(out, /\{|\}/);
   });
 
-  // The budget: `/api/tts/synthesize` allows 10s for the whole request and the
-  // overlay gives up at 12s. Measured round trips were 8.5s at 168 characters
-  // and 12.0s at 348, so a donor who wrote a full 300-character message is the
-  // one whose alert goes silent.
-  describe("the synthesis budget", () => {
-    const LONG = "word ".repeat(80).trim(); // 399 chars, over the 300-char cap
+  it("keeps a long donation message complete in the spoken line", () => {
+    const longMessage = "word ".repeat(80).trim();
+    assert.equal(
+      speechText("Thanks {name}", tip({ message: longMessage })),
+      `Thanks Sophea ${longMessage}`,
+    );
+  });
 
-    it("keeps a long message inside the budget", () => {
-      const out = speechText("Thanks {name}", tip({ message: LONG }));
-      assert.ok(
-        out.length <= 200,
-        `spoken line was ${out.length} chars, which measures past the 10s budget`,
-      );
-    });
+  it("splits long speech into bounded chunks without losing words", () => {
+    const line = `Thanks Sophea ${Array.from({ length: 80 }, (_, i) => `word${i}`).join(" ")}`;
+    const chunks = splitSpeechText(line);
+    assert.ok(chunks.length > 1);
+    assert.ok(chunks.every((chunk) => chunk.length <= 110));
+    assert.equal(chunks.join(" "), line);
+  });
 
-    it("marks the cut rather than pretending the message ended there", () => {
-      assert.match(speechText("Thanks {name}", tip({ message: LONG })), /…$/);
-    });
-
-    it("clips at a word boundary, so the tail is not mispronounced", () => {
-      // Distinct words, so "stopped on a boundary" is a checkable claim.
-      const words = Array.from({ length: 80 }, (_, i) => `w${i}`);
-      const out = speechText("Thanks {name}", tip({ message: words.join(" ") }));
-      const spoken = out.slice("Thanks Sophea ".length);
-
-      // A cut mid-word is pronounced as its own syllable, so the character
-      // before the ellipsis must end a word that exists in the original.
-      const kept = spoken.slice(0, -1).split(" ");
-      assert.match(kept.at(-1) ?? "", /\w$/);
-      assert.deepEqual(kept, words.slice(0, kept.length));
-    });
-
-    it("clips a {message} template the same way, since it carries the same words", () => {
-      const out = speechText("Thanks {name}: {message}", tip({ message: LONG }));
-      assert.ok(out.length <= 200);
-      assert.match(out, /…$/);
-    });
-
-    it("does not clip a message that already fits", () => {
-      const short = "Great stream, love the new setup";
-      assert.equal(speechText("Thanks {name}", tip({ message: short })), `Thanks Sophea ${short}`);
-      assert.doesNotMatch(speechText("Thanks {name}", tip({ message: short })), /…/);
-    });
-
-    it("trims the punctuation left stranded at the cut", () => {
-      const out = speechText("Thanks {name}", tip({ message: "alpha bravo charlie, delta echo foxtrot golf hotel india juliet kilo lima," }));
-      assert.doesNotMatch(out, /[,\s]…$/);
-    });
+  it("splits unspaced text on Unicode-safe character boundaries", () => {
+    const line = "អរគុណ🙂".repeat(40);
+    const chunks = splitSpeechText(line, 25);
+    assert.ok(chunks.every((chunk) => chunk.length <= 25));
+    assert.equal(chunks.join(""), line);
   });
 });
 
@@ -264,6 +252,30 @@ describe("pickTier", () => {
   it("tolerates string-encoded amounts and minimums from jsonb", () => {
     const loose = [tier({ tier_id: "small", min_amount_usd: "5" as unknown as number })];
     assert.equal(pickTier(loose, tip({ amount: 10 }))?.tier_id, "small");
+  });
+});
+
+describe("amountForTierTest", () => {
+  const tiers = [
+    tier({ tier_id: "small", min_amount_usd: 5, min_amount_khr: 5000, sort_order: 0 }),
+    tier({ tier_id: "large", min_amount_usd: 20, min_amount_khr: 20000, sort_order: 1 }),
+  ];
+
+  it("raises a test amount to the selected tier's minimum", () => {
+    assert.equal(amountForTierTest(2, "USD", "small", tiers), 5);
+  });
+
+  it("keeps the test amount below the next tier", () => {
+    assert.equal(amountForTierTest(50, "USD", "small", tiers), 19.99);
+  });
+
+  it("uses the base settings when the selected amount is below the first tier", () => {
+    assert.equal(amountForTierTest(10, "USD", null, tiers), 4.99);
+  });
+
+  it("uses the selected KHR tier and KHR step size", () => {
+    assert.equal(amountForTierTest(1000, "KHR", "small", tiers), 5000);
+    assert.equal(amountForTierTest(50000, "KHR", "small", tiers), 19999);
   });
 });
 

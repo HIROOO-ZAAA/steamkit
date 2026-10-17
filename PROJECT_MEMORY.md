@@ -1135,3 +1135,64 @@ hydration before touching the API.
 Side effects: proxy time on overlay routes fell from ~300ms to ~5ms (the auth
 RPC is no longer on every `_next` request), and `middleware` is deprecated in
 Next 16 — renamed to **`src/proxy.ts`** exporting `proxy()`, same behaviour.
+
+
+docs: record the settings-save failure and what it cost
+
+Two things worth not rediscovering.
+
+## alert_settings.tts_volume made every save fail
+
+The Alerts settings page writes `tts_volume`. Migration
+20261019000013_alert_tts_volume.sql adds the column, and that migration has to
+be pasted into the Supabase SQL editor by hand like every other one here. Until
+it is, PostgREST rejects the WHOLE write:
+
+  Could not find the 'tts_volume' column of 'alert_settings' in the schema cache
+
+One optional column out of twenty-three, and it took duration, template, TTS
+toggle, colours, layout and everything else with it. Reproduced directly
+against the live database: the exact dashboard payload answers 400, the same
+payload without `tts_volume` answers 200.
+
+Two things made this expensive to diagnose:
+
+- The form still looked saved. `handleSave` verifies its own round trip and
+  throws, but the error is a raw PostgREST schema-cache message, which reads
+  like a platform fault rather than "your change was not written".
+- `duration_seconds=10` in the database is the column default, not a value
+  anyone had chosen. So "OBS shows 10s and my setup says otherwise" looked
+  like the overlay ignoring the setting, when in fact the setting was never
+  stored.
+
+The fix is two-sided. `tts_volume` is now probed once at load and omitted from
+the write until the column exists, so the other twenty-two fields always save;
+and the volume slider says which migration it is waiting for rather than
+silently discarding the value.
+
+Generalisable: **a migration file in supabase/migrations/ proves nothing about
+the database.** Same class as tips.payment_transaction_id in
+20261019000012, where a trigger read a column that did not exist and every
+INSERT into tips failed. Read the live schema before believing the code.
+
+## The overlay spoke the previous template after a save
+
+The overlay re-reads its config on a 4s interval, which is fine for a stream
+and loses a race with the obvious test: change the template, click TEST, and
+the alert is spoken with the settings from up to four seconds ago. The creator
+hears the old words and concludes the save did not work.
+
+The queue now calls the refresh once before each alert speaks, so an alert
+always uses the settings current at that moment. One RPC call on a single
+indexed lookup, and the save-then-test loop stops lying.
+
+## Verified, with the numbers
+
+Realtime delivery is not the problem it appears to be. Subscribed exactly as
+the overlay does, inserted a real tips row: push arrived in 756ms. The
+perceived delay is synthesis: this provider takes 7-8s to render a line
+(the bundled demo voice included), and the queue is held until speech ends.
+
+There is no SQL-exec helper on this project -- probed every plausible name and
+read the 34 exposed RPCs. DDL genuinely cannot be applied from the app, so the
+paste-by-hand step is not an oversight.

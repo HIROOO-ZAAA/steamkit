@@ -10,6 +10,7 @@ import {
   highlightText,
   parseTemplate,
   pickTier,
+  splitSpeechText,
   speechText,
   type AlertSettings,
   type AlertTier,
@@ -39,13 +40,6 @@ type OverlayConfig = AlertSettings & VoiceSettings & {
 
 const PHOTO_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-photos`;
 const VOICE_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-voice`;
-
-/**
- * How long an alert stays on screen at minimum, even once the speech has
- * finished. Without a floor, an instant failure would flash and vanish, which
- * is harder to notice than no alert at all.
- */
-const MIN_ALERT_MS = 1_500;
 
 /**
  * `speechSynthesis.getVoices()` is populated asynchronously -- Chromium returns
@@ -101,7 +95,7 @@ function resolveVoice(voice: VoiceSettings): SpeechSynthesisVoice | null {
  * synthesis error, must not strand the alert queue waiting on a callback that
  * never fires.
  */
-function speakWithBrowser(text: string, voice: VoiceSettings): Promise<void> {
+function speakWithBrowser(text: string, voice: VoiceSettings, volume = 1): Promise<void> {
   if (!("speechSynthesis" in window)) return Promise.resolve();
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, ""));
@@ -110,6 +104,7 @@ function speakWithBrowser(text: string, voice: VoiceSettings): Promise<void> {
     else utterance.lang = voice.language;
     utterance.pitch = voice.pitch;
     utterance.rate = voice.speed;
+    utterance.volume = Math.max(0, Math.min(1, volume));
     utterance.onend = () => resolve();
     utterance.onerror = () => resolve();
     window.speechSynthesis.speak(utterance);
@@ -151,7 +146,10 @@ const ALERT_PLAYBACK_BUDGET_MS = 15_000;
  * overlay only has to decide between "the creator's voice" and "the OS voice".
  */
 async function synthesizeWithCreatorVoice(text: string): Promise<string | null> {
-  if (!synthesisToken) return null;
+  if (!synthesisToken) {
+    alertFault("tts skipped because the overlay token is not ready");
+    return null;
+  }
   console.warn(`[alerts] tts request chars=${text.length}`);
 
   const controller = new AbortController();
@@ -173,21 +171,37 @@ async function synthesizeWithCreatorVoice(text: string): Promise<string | null> 
       signal: controller.signal,
     });
     if (!res.ok) {
-      console.warn(`[alerts] tts response status=${res.status}`);
+      const failure = (await res.json().catch(() => null)) as { error?: string } | null;
+      alertFault(
+        `tts synthesis failed status=${res.status}` +
+          (failure?.error ? ` error=${failure.error.slice(0, 160)}` : ""),
+      );
       return null;
     }
-    const payload = (await res.json().catch(() => null)) as { audioUrl?: string } | null;
+    const payload = (await res.json().catch(() => null)) as {
+      audioUrl?: string;
+      voiceId?: string;
+      fellBack?: boolean;
+    } | null;
     const url = typeof payload?.audioUrl === "string" ? payload.audioUrl : null;
+    if (!url) {
+      alertFault("tts response succeeded without an audio URL");
+      return null;
+    }
+    console.error(
+      `[alerts] tts audio ready voiceId=${payload?.voiceId ?? "unknown"} ` +
+        `fallback=${payload?.fellBack === true}`,
+    );
     if (url && abandoned) {
       console.warn(
         `[alerts] tts arrived ${Date.now() - queueDeadline}ms after the alert ` +
           "budget expired; playing, but the next alert will not wait for it",
       );
     }
-    console.warn(`[alerts] tts response status=${res.status} audio=${url ? "yes" : "no"}`);
+    console.warn(`[alerts] tts response status=${res.status} audio=yes`);
     return url;
-  } catch {
-    console.warn("[alerts] tts request failed before a response");
+  } catch (error) {
+    alertFault(`tts request failed before a response error=${errorNameOf(error) ?? "unknown"}`);
     return null;
   } finally {
     window.clearTimeout(timer);
@@ -360,7 +374,7 @@ async function ensureAudioOutputKnown(): Promise<boolean> {
   return audioOutputAvailable;
 }
 
-function webAudioDecoder(): AudioDecoder {
+function webAudioDecoder(volume = 1): AudioDecoder {
   return {
     async decode(url: string) {
       const res = await fetch(url);
@@ -371,8 +385,11 @@ function webAudioDecoder(): AudioDecoder {
       return {
         play() {
           const source = context.createBufferSource();
+          const gain = context.createGain();
           source.buffer = buffer;
-          source.connect(context.destination);
+          gain.gain.value = Math.max(0, Math.min(1, volume));
+          source.connect(gain);
+          gain.connect(context.destination);
           source.start();
           return {
             finished: new Promise<void>((resolve, reject) => {
@@ -406,7 +423,7 @@ function webAudioDecoder(): AudioDecoder {
  * from the element, then the same clip again through Web Audio. Probing never
  * means the page reports success while the stream hears nothing.
  */
-async function playAudioUrl(url: string): Promise<boolean> {
+async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
   const where = audioLocation(url);
   console.warn(`[alerts] playback start ${where}`);
 
@@ -416,7 +433,7 @@ async function playAudioUrl(url: string): Promise<boolean> {
   // is the only path that can make sound in a browser source with no user
   // gesture — and the only one whose success can be verified.
   if (!audible) {
-    const outcome = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
+    const outcome = await playViaWebAudio(url, webAudioDecoder(volume), PLAYBACK_TIMEOUT_MS);
     console.warn(
       `[alerts] tts-webaudio ${where} playback=${outcome} context=${audioContext?.state ?? "none"}`,
     );
@@ -432,7 +449,9 @@ async function playAudioUrl(url: string): Promise<boolean> {
     return outcome === "ended";
   }
 
-  const outcome = await playAudioToEnd(new Audio(url), PLAYBACK_TIMEOUT_MS, (d) =>
+  const audio = new Audio(url);
+  audio.volume = Math.max(0, Math.min(1, volume));
+  const outcome = await playAudioToEnd(audio, PLAYBACK_TIMEOUT_MS, (d) =>
     playbackLog(`tts ${where}`, d.outcome, d.errorName),
   );
   if (outcome === "ended") {
@@ -444,7 +463,7 @@ async function playAudioUrl(url: string): Promise<boolean> {
   // connection. Web Audio fetches and decodes independently, so this is a real
   // second chance rather than a repeat.
   console.warn(`[alerts] tts element playback=${outcome}; retrying through Web Audio`);
-  const fallback = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
+  const fallback = await playViaWebAudio(url, webAudioDecoder(volume), PLAYBACK_TIMEOUT_MS);
   playbackLog(`tts-webaudio ${where}`, fallback);
   if (fallback === "ended") spokenVerdict("webaudio-after-element", audible);
   return fallback === "ended";
@@ -458,20 +477,18 @@ async function playAudioUrl(url: string): Promise<boolean> {
  * no route, refused request, dead audio element, no OS voice — has to land back
  * on `speakWithBrowser` rather than strand the queue.
  */
-async function speak(text: string, voice: VoiceSettings): Promise<void> {
+async function speak(text: string, voice: VoiceSettings, volume = 1): Promise<void> {
   const line = text.replace(/<[^>]+>/g, "");
-  const audioUrl = await synthesizeWithCreatorVoice(line);
-  if (!audioUrl) {
-    // The two failure modes a creator has to be able to tell apart: the server
-    // produced nothing, versus the audio exists but would not play. Both are
-    // otherwise silent in the OBS log.
-    alertFault("tts synthesis returned no audio; using OS voice");
-    await speakWithBrowser(line, voice);
-    return;
+  for (const chunk of splitSpeechText(line)) {
+    const audioUrl = await synthesizeWithCreatorVoice(chunk);
+    if (!audioUrl) {
+      await speakWithBrowser(chunk, voice, volume);
+      continue;
+    }
+    if (await playAudioUrl(audioUrl, volume)) continue;
+    alertFault("tts playback did not run to the end; using OS voice");
+    await speakWithBrowser(chunk, voice, volume);
   }
-  if (await playAudioUrl(audioUrl)) return;
-  alertFault("tts playback did not run to the end; using OS voice");
-  await speakWithBrowser(line, voice);
 }
 
 /**
@@ -511,36 +528,31 @@ function triggerAlert(
   settings: AlertSettings,
   voice: VoiceSettings,
   setCurrentAlert: Dispatch<SetStateAction<Tip | null>>,
+  onSpeechComplete: () => void,
   tiers: AlertTier[] = [],
   intro: { enabled: boolean; template: string } = { enabled: false, template: "" },
 ) {
   const tier = pickTier(tiers, tip);
   const effective = applyTier(settings, tier);
   setCurrentAlert(tip);
+  // Match the configured duration exactly from the moment the alert appears.
+  // Speech may continue after it fades, but the queue stays locked until the
+  // voice finishes so consecutive donations are never spoken over each other.
+  window.setTimeout(() => {
+    setCurrentAlert((current) => current?.id === tip.id ? null : current);
+  }, Math.max(0, effective.duration_seconds) * 1000);
 
   if (effective.sound_url) playSoundEffect(effective.sound_url);
 
-  // The alert stays up until the speech finishes, then for whatever is left of
-  // its configured duration, with a floor so a short phrase still gets read.
-  // A fixed timer set at trigger time would cut a cloned voice off mid-word,
-  // because synthesis adds a second or two before the first sample plays.
-  const scheduleClear = (elapsedMs: number) => {
-    const budget = effective.duration_seconds * 1000;
-    const remaining = Math.max(budget - elapsedMs, MIN_ALERT_MS);
-    window.setTimeout(() => setCurrentAlert(null), remaining);
-  };
-
   const finish = () => {
     if (!effective.tts_enabled) {
-      scheduleClear(0);
+      onSpeechComplete();
       return;
     }
     const tpl = effective.message_template ??
       "Thank you {name} for {amount} {currency}!";
-    const startedAt = Date.now();
-    void speak(speechText(tpl, tip), voice).then(() => {
-      scheduleClear(Date.now() - startedAt);
-    });
+    void speak(speechText(tpl, tip), voice, (effective.tts_volume ?? 100) / 100)
+      .finally(onSpeechComplete);
   };
 
   // A donor voice message replaces the read-aloud for that alert: speaking the
@@ -555,10 +567,9 @@ function triggerAlert(
   const announce = intro.enabled
     ? speak(parseTemplate(intro.template || "{name} sent a voice message", tip), voice)
     : Promise.resolve();
-
   void announce
     .then(() => playVoiceMessage(tip.voice_path!))
-    .then(finish);
+    .finally(onSpeechComplete);
 }
 
 export default function AlertsOverlayPage({
@@ -573,6 +584,7 @@ export default function AlertsOverlayPage({
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [voice, setVoice] = useState<VoiceSettings>({ language: "km-KH", pitch: 1, speed: 1 });
   const [currentAlert, setCurrentAlert] = useState<Tip | null>(null);
+  const [isProcessingAlert, setIsProcessingAlert] = useState(false);
   const [queue, setQueue] = useState<Tip[]>([]);
   const [loading, setLoading] = useState(true);
   const [lookupError, setLookupError] = useState(false);
@@ -593,6 +605,13 @@ export default function AlertsOverlayPage({
     enabled: false,
     template: "",
   });
+  /**
+   * The overlay-config refresh, so the queue can call it before an alert speaks.
+   *
+   * Defined inside `initOverlay`, which owns the Supabase client and the token,
+   * but needed by the drain effect, which lives in the component body.
+   */
+  const refreshConfigRef = useRef<(() => Promise<boolean>) | null>(null);
 
   function enqueueTip(tip: Tip) {
     if (!tip?.id || seenRef.current.has(tip.id)) return;
@@ -606,22 +625,35 @@ export default function AlertsOverlayPage({
 
   // Play queued alerts one at a time
   useEffect(() => {
-    if (currentAlert || queue.length === 0) return;
+    if (currentAlert || isProcessingAlert || queue.length === 0) return;
     const s = settingsRef.current;
     if (!s) return;
     const [next, ...rest] = queue;
     setQueue(rest);
     queueDepthRef.current = rest.length;
+    setIsProcessingAlert(true);
     console.warn(`[alerts] drain depth=${rest.length + 1}`);
-    triggerAlert(
-      next,
-      s,
-      voiceRef.current,
-      setCurrentAlert,
-      tiersRef.current,
-      introRef.current,
-    );
-  }, [queue, currentAlert]);
+    void (async () => {
+      // Re-read the creator's settings immediately before speaking. The 4s
+      // refresh interval is fine for a live stream, but it loses a race with the
+      // obvious test: save a template, click TEST, and the overlay is still
+      // holding the previous one, so the creator hears the old words and
+      // concludes the template was not saved. One RPC call removes the race,
+      // and makes a real donation speak with whatever is set right now rather
+      // than with a snapshot up to four seconds old.
+      await refreshConfigRef.current?.();
+      // applyConfig updates settingsRef, so re-read it rather than reuse `s`.
+      triggerAlert(
+        next,
+        settingsRef.current ?? s,
+        voiceRef.current,
+        setCurrentAlert,
+        () => setIsProcessingAlert(false),
+        tiersRef.current,
+        introRef.current,
+      );
+    })();
+  }, [queue, currentAlert, isProcessingAlert]);
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -665,6 +697,7 @@ export default function AlertsOverlayPage({
             animation_type: cfg.animation_type,
             font_color: cfg.font_color,
             tts_enabled: cfg.tts_enabled,
+            tts_volume: Math.max(0, Math.min(100, (cfg as AlertSettings).tts_volume ?? 100)),
             layout: (cfg as AlertSettings).layout ?? "image_left",
             image_url: (cfg as AlertSettings).image_url ?? "",
             image_scale: (cfg as AlertSettings).image_scale ?? 50,
@@ -708,8 +741,33 @@ export default function AlertsOverlayPage({
           synthesisToken = token ?? null;
         }
 
+        async function refreshOverlayConfig(): Promise<boolean> {
+          try {
+            const { data: fresh, error: refreshError } = await supabase.rpc(
+              "streamkit_resolve_overlay",
+              { p_token: token },
+            );
+            if (refreshError) throw refreshError;
+            const cfg = (fresh as unknown as OverlayConfig[] | null)?.[0];
+            if (!cfg || disposed) return false;
+            const json = JSON.stringify(cfg);
+            if (json !== lastConfigJsonRef.current) {
+              lastConfigJsonRef.current = json;
+              applyConfig(cfg);
+            }
+            return true;
+          } catch (error) {
+            console.error(
+              `[alerts] settings refresh failed=${errorNameOf(error) ?? "unknown"}`,
+            );
+            return false;
+          }
+        }
+
         applyConfig(config);
         lastConfigJsonRef.current = JSON.stringify(config);
+        // Published so the queue can force a refresh before an alert speaks.
+        refreshConfigRef.current = refreshOverlayConfig;
         console.warn(
           `[alerts] init ready tts=${config.tts_enabled ? "on" : "off"} ` +
             `template=${config.message_template ? "set" : "missing"}`,
@@ -729,7 +787,13 @@ export default function AlertsOverlayPage({
             (payload) => {
               const tip = payload.new as Tip;
               if (tip.payment_status === "successful" || tip.payment_status === "test") {
-                enqueueTip(tip);
+                // A test can be clicked immediately after Save. Refresh the
+                // persisted settings before the event enters the queue so it
+                // cannot use the previous tier's duration or speech template.
+                void (async () => {
+                  if (tip.payment_status === "test" && !(await refreshOverlayConfig())) return;
+                  enqueueTip(tip);
+                })();
               }
             },
           )
@@ -785,6 +849,9 @@ export default function AlertsOverlayPage({
             }
             if (disposed || !recent || recent.length === 0) return;
             console.warn(`[alerts] poll new=${recent.length}`);
+            if ((recent as Tip[]).some((tip) => tip.payment_status === "test")) {
+              if (!(await refreshOverlayConfig())) return;
+            }
             sinceRef.current = (recent[recent.length - 1] as Tip).created_at;
             (recent as Tip[]).forEach(enqueueTip);
           } catch (error) {
@@ -797,19 +864,7 @@ export default function AlertsOverlayPage({
 
         // Re-apply settings on save from the dashboard (no OBS refresh needed)
         settingsRefreshTimer = window.setInterval(async () => {
-          try {
-            const { data: fresh } = await supabase.rpc("streamkit_resolve_overlay", {
-              p_token: token,
-            });
-            const cfg = (fresh as unknown as OverlayConfig[] | null)?.[0];
-            if (disposed || !cfg) return;
-            const json = JSON.stringify(cfg);
-            if (json === lastConfigJsonRef.current) return;
-            lastConfigJsonRef.current = json;
-            applyConfig(cfg);
-          } catch {
-            // retry next tick
-          }
+          await refreshOverlayConfig();
         }, 4000);
       } catch {
         if (!disposed) setLookupError(true);
