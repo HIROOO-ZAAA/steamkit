@@ -43,9 +43,8 @@ async function fetchCloneRows(supabase: Supabase) {
  * browser cannot read) deliberately does not block the upload.
  */
 const SAMPLE_MIN_SECONDS = 3;
-const SAMPLE_MAX_SECONDS = 15;
-const TRANSCRIPT_REQUIRED_OVER_SECONDS = 15;
-const TRANSCRIPT_MAX_SECONDS = 20;
+const SAMPLE_MAX_SECONDS = 35;
+const TRANSCRIPT_MAX_SECONDS = 35;
 
 const DEFAULT_TEST_PHRASE =
   "This is a test of your alert voice. Thanks so much for the support!";
@@ -97,6 +96,48 @@ export default function VoiceSettingsPage() {
   const [testPhrase, setTestPhrase] = useState(DEFAULT_TEST_PHRASE);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [activeCloneId, setActiveCloneId] = useState<string | null>(null);
+  const [savingActiveId, setSavingActiveId] = useState<string | null>(null);
+
+  /**
+   * Which voice the donation alert speaks with. Mirrors `voice_settings`, which
+   * /api/tts/synthesize reads to decide between the creator's chosen clone and
+   * the "newest consented clone" it used to assume on their behalf.
+   */
+  const loadActiveClone = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const { data, error: queryError } = await supabase
+      .from("voice_settings")
+      .select("cloning_enabled, active_clone_id")
+      .eq("user_id", userData.user.id)
+      .maybeSingle();
+    if (queryError) return;
+    setActiveCloneId(data?.cloning_enabled ? data.active_clone_id ?? null : null);
+  }, [supabase]);
+
+  const handleSetActive = useCallback(
+    async (cloneId: string | null) => {
+      setSavingActiveId(cloneId ?? "");
+      setTestError(null);
+      try {
+        const res = await fetch("/api/voice-settings/active-clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cloneId }),
+        });
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        if (!res.ok) {
+          setTestError(payload?.error ?? "Could not save that choice.");
+          return;
+        }
+        setActiveCloneId(cloneId);
+      } finally {
+        setSavingActiveId(null);
+      }
+    },
+    [],
+  );
 
   const applyRows = useCallback(
     (rows: VoiceClone[] | null, queryError: { message: string } | null) => {
@@ -125,16 +166,15 @@ export default function VoiceSettingsPage() {
     void (async () => {
       const { rows, error: queryError } = await fetchCloneRows(supabase);
       applyRows(rows, queryError);
+      await loadActiveClone();
     })();
-  }, [supabase, applyRows]);
+  }, [supabase, applyRows, loadActiveClone]);
 
   // Newest first, so the first usable clone is the one alerts speak with.
   // Derived during render: this page holds one list and the cost is a `find`.
   // Mirrors the synthesis route's choice — the two must agree, or this page
   // advertises a voice nothing speaks with.
   const activeVoice = clones.find((c) => c.consent_at && c.voicestudio_voice_id) ?? null;
-  const transcriptRequired =
-    clipDuration !== null && clipDuration > TRANSCRIPT_REQUIRED_OVER_SECONDS;
 
   async function handleFileChange(picked: File | null) {
     setFile(picked);
@@ -152,19 +192,12 @@ export default function VoiceSettingsPage() {
     }
     if (clipDuration !== null && clipDuration > TRANSCRIPT_MAX_SECONDS) {
       setError(
-        `That sample is ${clipDuration.toFixed(1)}s. Trim it to ${TRANSCRIPT_MAX_SECONDS}s or less — ` +
-          "past that the engine needs a speech-to-text model to pick the passage, and none is installed.",
+        `That sample is ${clipDuration.toFixed(1)}s. Trim it to ${TRANSCRIPT_MAX_SECONDS}s or less.`,
       );
       return;
     }
     if (clipDuration !== null && clipDuration < SAMPLE_MIN_SECONDS) {
       setError(`That sample is only ${clipDuration.toFixed(1)}s. Record at least ${SAMPLE_MIN_SECONDS}s of speech.`);
-      return;
-    }
-    if (transcriptRequired && !refText.trim()) {
-      setError(
-        `This clip is over ${TRANSCRIPT_REQUIRED_OVER_SECONDS}s, so it needs a transcript of exactly what is said.`,
-      );
       return;
     }
     if (!consented) {
@@ -179,7 +212,9 @@ export default function VoiceSettingsPage() {
     // Load-bearing: it is what makes consent_at non-null, and a null consent_at
     // hides the clone from the overlay entirely.
     form.append("consent", "true");
-    if (refText.trim()) form.append("ref_text", refText.trim());
+    // Required by the route, and by the physics of the instance: a clone without
+    // a transcript is transcribed on the GPU during every synthesis.
+    form.append("ref_text", refText.trim());
 
     try {
       const res = await fetch("/api/voice-clones", { method: "POST", body: form });
@@ -301,30 +336,28 @@ export default function VoiceSettingsPage() {
               required
             />
             {clipDuration !== null && (
-              <span className={styles.subhead}>
-                {clipDuration.toFixed(1)}s
-                {transcriptRequired
-                  ? ` — over ${TRANSCRIPT_REQUIRED_OVER_SECONDS}s, so a transcript is required below`
-                  : ""}
-              </span>
+              <span className={styles.subhead}>{clipDuration.toFixed(1)}s</span>
             )}
           </label>
 
           <label className={styles.field}>
             <span className={styles.label}>
-              Reference transcript{" "}
-              {transcriptRequired
-                ? "(required for this clip length)"
-                : "(optional — lets the engine clone a longer clip)"}
+              Words said in the sample ({SAMPLE_MIN_SECONDS}s–{SAMPLE_MAX_SECONDS}s clip)
             </span>
             <input
               className={styles.input}
               type="text"
               value={refText}
               onChange={(e) => setRefText(e.target.value)}
-              placeholder="Type exactly what is said in the sample audio"
+              placeholder="Type exactly what is spoken in the sample audio"
               maxLength={600}
+              required
             />
+            <span className={styles.subhead}>
+              Required. Without this the engine transcribes your clip on the GPU during
+              every single alert, which is slower and fails outright on a busy GPU. It
+              also lets the sample run to {SAMPLE_MAX_SECONDS}s instead of 15s.
+            </span>
           </label>
 
           <label className={styles.consent}>
@@ -394,6 +427,7 @@ export default function VoiceSettingsPage() {
         <ul className={styles.voiceList}>
           {clones.map((clone) => {
             const speakable = isSpeakable(clone);
+            const isActive = activeCloneId === clone.id;
             return (
               <li key={clone.id} className={styles.voiceRow}>
                 <div className={styles.voiceInfo}>
@@ -402,11 +436,31 @@ export default function VoiceSettingsPage() {
                     {!clone.consent_at
                       ? "Pending consent"
                       : speakable
-                        ? "Ready"
+                        ? isActive
+                          ? "Ready — reads your alerts"
+                          : "Ready"
                         : "No provider id"}
                   </span>
                 </div>
                 <div className={styles.voiceActions}>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={() => void handleSetActive(isActive ? null : clone.id)}
+                    disabled={!speakable || savingActiveId !== null}
+                    title={
+                      speakable
+                        ? isActive
+                          ? "Stop using a cloned voice; alerts fall back to the newest consented clone"
+                          : "Read your donation alerts in this voice"
+                        : "Only a voice with consent and a provider id can speak"
+                    }
+                  >
+                    {savingActiveId === clone.id
+                      ? "Saving…"
+                      : isActive
+                        ? "Stop using for alerts"
+                        : "Use for alerts"}
+                  </button>
                   <button
                     className={styles.secondaryButton}
                     onClick={() => void handleTest(clone.id)}

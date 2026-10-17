@@ -6,6 +6,7 @@ import {
   highlightText,
   parseTemplate,
   pickTier,
+  speechText,
   type AlertSettings,
   type AlertTier,
   type TemplateTip,
@@ -106,6 +107,59 @@ describe("parseTemplate", () => {
 
   it("leaves an unknown placeholder untouched rather than blanking it", () => {
     assert.equal(parseTemplate("{nope}", tip()), "{nope}");
+  });
+});
+
+describe("speechText", () => {
+  it("appends the donor message when the template has no {message}", () => {
+    assert.equal(
+      speechText("Thanks {name}", tip({ message: "Great stream" })),
+      "Thanks Sophea Great stream",
+    );
+  });
+
+  it("never speaks the message twice when the template already has {message}", () => {
+    const out = speechText("Thanks {name}: {message}", tip({ message: "Great stream" }));
+    assert.equal(out, "Thanks Sophea: Great stream");
+    assert.equal(out.match(/Great stream/g)?.length, 1);
+  });
+
+  it("treats only the exact {message} token as 'already included'", () => {
+    assert.equal(
+      speechText("Hi {name} {message}", tip({ message: "Yo" })),
+      "Hi Sophea Yo",
+    );
+    // parseTemplate leaves a spaced variant literal, so it is not a placeholder
+    // and must not suppress the donor's words.
+    assert.equal(
+      speechText("Hi {name} { message }", tip({ message: "Yo" })),
+      "Hi Sophea { message } Yo",
+    );
+  });
+
+  it("leaves a message-less donation as just the acknowledgement", () => {
+    assert.equal(speechText("Thanks {name}", tip({ message: null })), "Thanks Sophea");
+    assert.equal(speechText("Thanks {name}", tip({ message: "" })), "Thanks Sophea");
+    assert.equal(speechText("Thanks {name}", tip({ message: "   " })), "Thanks Sophea");
+  });
+
+  it("keeps the acknowledgement before the message", () => {
+    const out = speechText("Thank you {name}", tip({ message: "Hello there" }));
+    assert.ok(out.indexOf("Sophea") < out.indexOf("Hello there"));
+  });
+
+  it("speaks only the message when the template renders to nothing", () => {
+    assert.equal(speechText("", tip({ message: "Just this" })), "Just this");
+    assert.equal(speechText("{avatar}", tip({ message: "Just this" })), "Just this");
+  });
+
+  it("does not leave a stray separator when the template is only a placeholder", () => {
+    assert.equal(speechText("{message}", tip({ message: "Only me" })), "Only me");
+  });
+
+  it("never leaks placeholder syntax into the spoken line", () => {
+    const out = speechText("Hi {name}", tip({ message: "Yo" }));
+    assert.doesNotMatch(out, /\{|\}/);
   });
 });
 

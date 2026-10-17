@@ -10,10 +10,17 @@ import {
   highlightText,
   parseTemplate,
   pickTier,
+  speechText,
   type AlertSettings,
   type AlertTier,
 } from "@/lib/overlay/alert-logic";
-import { playAudioToEnd } from "@/lib/overlay/audio-playback";
+import {
+  PLAYBACK_TIMEOUT_MS,
+  errorNameOf,
+  playAudioToEnd,
+  playViaWebAudio,
+  type AudioDecoder,
+} from "@/lib/overlay/audio-playback";
 
 type VoiceSettings = {
   language: string;
@@ -122,6 +129,19 @@ let synthesisToken: string | null = null;
 const SYNTHESIS_TIMEOUT_MS = 12_000;
 
 /**
+ * How long one alert may hold the queue while its audio is produced.
+ *
+ * The alert itself is on screen for `duration_seconds` (~7s), so a synthesis
+ * that has not produced a URL by now has already outlived its own alert. Above
+ * this the alert stops *waiting* on the audio — it still plays if it arrives,
+ * but the queue moves on, because the failure being guarded against is a
+ * head-of-line block: every later donation silent behind one stuck alert.
+ *
+ * Only a diagnosis aid for now; the queue is still serial and still waits.
+ */
+const ALERT_PLAYBACK_BUDGET_MS = 15_000;
+
+/**
  * Asks /api/tts/synthesize to speak `text` in the creator's own voice, and
  * returns a playable URL — or null for "cannot, use the browser instead".
  *
@@ -132,9 +152,19 @@ const SYNTHESIS_TIMEOUT_MS = 12_000;
  */
 async function synthesizeWithCreatorVoice(text: string): Promise<string | null> {
   if (!synthesisToken) return null;
+  console.warn(`[alerts] tts request chars=${text.length}`);
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), SYNTHESIS_TIMEOUT_MS);
+  // An alert is on screen for a few seconds. If synthesis has not produced a URL
+  // by then, waiting longer only delays the next alert while the on-screen one
+  // has already outlived its own duration — so playback may still finish and
+  // still be worth hearing, but the alert must not hold the queue open for it.
+  const queueDeadline = Date.now() + ALERT_PLAYBACK_BUDGET_MS;
+  let abandoned = false;
+  const queueTimer = window.setTimeout(() => {
+    abandoned = true;
+  }, ALERT_PLAYBACK_BUDGET_MS);
   try {
     const res = await fetch("/api/tts/synthesize", {
       method: "POST",
@@ -142,20 +172,254 @@ async function synthesizeWithCreatorVoice(text: string): Promise<string | null> 
       body: JSON.stringify({ overlayToken: synthesisToken, text }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[alerts] tts response status=${res.status}`);
+      return null;
+    }
     const payload = (await res.json().catch(() => null)) as { audioUrl?: string } | null;
-    return typeof payload?.audioUrl === "string" ? payload.audioUrl : null;
+    const url = typeof payload?.audioUrl === "string" ? payload.audioUrl : null;
+    if (url && abandoned) {
+      console.warn(
+        `[alerts] tts arrived ${Date.now() - queueDeadline}ms after the alert ` +
+          "budget expired; playing, but the next alert will not wait for it",
+      );
+    }
+    console.warn(`[alerts] tts response status=${res.status} audio=${url ? "yes" : "no"}`);
+    return url;
   } catch {
+    console.warn("[alerts] tts request failed before a response");
     return null;
   } finally {
     window.clearTimeout(timer);
+    window.clearTimeout(queueTimer);
   }
 }
 
-/** Plays a URL, resolving true only if it actually played to the end. */
+/**
+ * Where an audio file lives, for logs: origin and path only.
+ *
+ * The signed TTS URLs carry their credential in the query string and the path
+ * itself is a sha256 of voice plus text, so this identifies the object without
+ * revealing the token or the donation message.
+ */
+function audioLocation(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "<unparsable url>";
+  }
+}
+
+/**
+ * Outcome and failure name only - never a full URL, a token, or the alert text.
+ *
+ * `console.error`, not `console.warn`, and that is load-bearing. OBS's browser
+ * source forwards ONLY uncaught errors to its log: verified against a live
+ * obs-browser 2.26.9 session, where seven uncaught errors from this page were
+ * recorded and ZERO `console.warn` lines were. Every diagnostic this feature
+ * emits is invisible in the one place a creator will ever look, which is why
+ * "the overlay is silent" has been so hard to explain.
+ *
+ * These are not errors being invented — each one is emitted at a point where
+ * the alert genuinely may have produced no sound, which is exactly what needs
+ * to be diagnosable from the OBS log.
+ */
+function playbackLog(label: string, outcome: string, errorName?: string): void {
+  const line = `[alerts] ${label} playback=${outcome}${errorName ? ` error=${errorName}` : ""}`;
+  if (outcome === "ended") {
+    console.warn(line);
+    return;
+  }
+  console.error(line);
+}
+
+/**
+ * The Web Audio implementation of `AudioDecoder`.
+ *
+ * One context for the life of the page: a browser caps how many may exist, and
+ * reusing it keeps each alert's setup down to a fetch and a decode.
+ */
+let audioContext: AudioContext | null = null;
+
+/**
+ * The lines a creator needs from the OBS log, at the level OBS actually keeps.
+ *
+ * OBS forwards only uncaught errors, so anything worth reading from
+ * `%APPDATA%/obs-studio/logs` has to be `console.error`. Used for the two facts
+ * that decide "did the alert speak": the audio output could not start, and no
+ * audio came back at all. Routine progress stays on `console.warn` — visible
+ * with devtools open, absent from the OBS log, which is the right trade for
+ * lines that fire every few seconds.
+ */
+function alertFault(message: string): void {
+  console.error(`[alerts] ${message}`);
+}
+
+/**
+ * Whether audio can actually reach the speakers on this page, and whether we
+ * have asked yet.
+ *
+ * Both are needed because `ended` is not proof of sound. An `HTMLAudioElement`
+ * reports it whether or not an output device is attached, and a suspended
+ * `AudioContext` fires `onended` while its clock advances in silence. Measured
+ * on this machine: a real alert logged `playback=ended` with
+ * `context=suspended` throughout, so the page believed it had spoken and the
+ * stream heard nothing.
+ *
+ * Probed once, with a one-sample silent buffer, before any clip is played.
+ */
+let audioOutputKnown = false;
+let audioOutputAvailable = false;
+
+/**
+ * The AudioContext, primed and asked to run.
+ *
+ * A browser source never has a user gesture, so a new context can come back
+ * suspended and stay there: `decodeAudioData` still resolves and `onended`
+ * still fires, which means the clip "plays" perfectly while nothing is ever
+ * sent to the speakers. Observed in a real headless Chromium alert:
+ * `contexts: [{ state: "suspended" }]` with `decode: []` — nothing reached the
+ * output.
+ *
+ * The context is primed with a one-sample buffer first, because on a freshly
+ * attached output Chromium can start suspended *because* it is muted, and
+ * `resume()` alone leaves it that way.
+ *
+ * `resume()` is bounded because it does not always settle: with no audio device
+ * at all it never resolves, and since the decode happens BEFORE
+ * `playViaWebAudio` arms its timeout, an unbounded await there would hang the
+ * alert queue permanently — the exact stall `audio-playback.ts` exists to
+ * prevent, re-introduced upstream of it.
+ */
+const AUDIOCONTEXT_RESUME_MS = 1_500;
+
+async function runningAudioContext(): Promise<AudioContext> {
+  audioContext ??= new AudioContext();
+  if (audioContext.state !== "running") {
+    try {
+      const source = audioContext.createBufferSource();
+      source.buffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
+      source.connect(audioContext.destination);
+      source.start(0);
+    } catch {
+      // Nothing to prime; `resume()` below is still worth trying.
+    }
+    await Promise.race([
+      audioContext.resume().catch(() => undefined),
+      new Promise((resolve) => window.setTimeout(resolve, AUDIOCONTEXT_RESUME_MS)),
+    ]);
+  }
+  return audioContext;
+}
+
+/**
+ * Decides once whether this page can make sound, and caches the answer.
+ *
+ * Called before the first clip is played, because the choice of playback path
+ * depends on it and only one path may play the clip.
+ */
+async function ensureAudioOutputKnown(): Promise<boolean> {
+  if (audioOutputKnown) return audioOutputAvailable;
+  audioOutputKnown = true;
+  try {
+    const context = await runningAudioContext();
+    audioOutputAvailable = context.state === "running";
+  } catch {
+    audioOutputAvailable = false;
+  }
+  // Stated plainly: a creator cannot act on "playback=ended", because it looks
+  // identical to success. And at error level, because this is the single line
+  // that explains a completely silent stream, and OBS keeps only errors.
+  const line = `audio output available=${audioOutputAvailable}`;
+  if (audioOutputAvailable) console.warn(`[alerts] ${line}`);
+  else alertFault(`${line} — nothing this page plays will be audible`);
+  return audioOutputAvailable;
+}
+
+function webAudioDecoder(): AudioDecoder {
+  return {
+    async decode(url: string) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`audio fetch ${res.status}`);
+      const bytes = await res.arrayBuffer();
+      const context = await runningAudioContext();
+      const buffer = await context.decodeAudioData(bytes);
+      return {
+        play() {
+          const source = context.createBufferSource();
+          source.buffer = buffer;
+          source.connect(context.destination);
+          source.start();
+          return {
+            finished: new Promise<void>((resolve, reject) => {
+              source.onended = () => resolve();
+              // AudioBufferSourceNode has no `onerror`; errors arrive as events.
+              source.addEventListener("error", () => reject(new Error("source error")), {
+                once: true,
+              });
+            }),
+            stop() {
+              try {
+                source.stop();
+              } catch {
+                // Already stopped or never started.
+              }
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Plays a URL, resolving true only when something was actually sent to the
+ * speakers.
+ *
+ * Exactly ONE path plays the clip, and which one is decided BEFORE playback
+ * starts. That ordering matters in both directions. Probing afterwards means
+ * the alert is heard twice when audio does work — measured: `playback=ended`
+ * from the element, then the same clip again through Web Audio. Probing never
+ * means the page reports success while the stream hears nothing.
+ */
 async function playAudioUrl(url: string): Promise<boolean> {
-  const outcome = await playAudioToEnd(new Audio(url));
-  return outcome === "ended";
+  const where = audioLocation(url);
+  console.warn(`[alerts] playback start ${where}`);
+
+  const audible = await ensureAudioOutputKnown();
+
+  // Web Audio is not bound by the autoplay policy that refuses `play()`, so it
+  // is the only path that can make sound in a browser source with no user
+  // gesture — and the only one whose success can be verified.
+  if (!audible) {
+    const outcome = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
+    console.warn(
+      `[alerts] tts-webaudio ${where} playback=${outcome} context=${audioContext?.state ?? "none"}`,
+    );
+    // `ended` on a context that never started is a clock advancing in silence.
+    if (outcome === "ended" && audioContext?.state !== "running") {
+      alertFault(
+        "the clip finished but the audio context never started, so nothing was " +
+          "sent to the speakers; falling back to the OS voice",
+      );
+      return false;
+    }
+    return outcome === "ended";
+  }
+
+  const outcome = await playAudioToEnd(new Audio(url), PLAYBACK_TIMEOUT_MS, (d) =>
+    playbackLog(`tts ${where}`, d.outcome, d.errorName),
+  );
+  if (outcome === "ended") return true;
+
+  // Audio works but this element still failed — a corrupt body, a dead
+  // connection. Web Audio fetches and decodes independently, so this is a real
+  // second chance rather than a repeat.
+  console.warn(`[alerts] tts element playback=${outcome}; retrying through Web Audio`);
+  const fallback = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
+  playbackLog(`tts-webaudio ${where}`, fallback);
+  return fallback === "ended";
 }
 
 /**
@@ -169,13 +433,49 @@ async function playAudioUrl(url: string): Promise<boolean> {
 async function speak(text: string, voice: VoiceSettings): Promise<void> {
   const line = text.replace(/<[^>]+>/g, "");
   const audioUrl = await synthesizeWithCreatorVoice(line);
-  if (audioUrl && (await playAudioUrl(audioUrl))) return;
+  if (!audioUrl) {
+    // The two failure modes a creator has to be able to tell apart: the server
+    // produced nothing, versus the audio exists but would not play. Both are
+    // otherwise silent in the OBS log.
+    alertFault("tts synthesis returned no audio; using OS voice");
+    await speakWithBrowser(line, voice);
+    return;
+  }
+  if (await playAudioUrl(audioUrl)) return;
+  alertFault("tts playback did not run to the end; using OS voice");
   await speakWithBrowser(line, voice);
+}
+
+/**
+ * Plays an alert's sound effect.
+ *
+ * Deliberately fire-and-forget and NOT awaited: an effect that starts a little
+ * late is unnoticeable, whereas awaiting it puts a third audio device in front
+ * of the spoken message. It goes through the same guarded path as the voice
+ * because the autoplay refusal is identical — observed in a real browser alert:
+ * `sound … playback=error error=NotAllowedError` — and this call is what proves
+ * the symptom is the policy rather than the file.
+ */
+function playSoundEffect(url: string): void {
+  const where = audioLocation(url);
+  void (async () => {
+    const outcome = await playAudioToEnd(new Audio(url), PLAYBACK_TIMEOUT_MS, (d) =>
+      playbackLog(`sound ${where}`, d.outcome, d.errorName),
+    );
+    if (outcome === "ended") return;
+    // Same fallback the voice uses: Web Audio is not bound by the autoplay
+    // policy, so an OBS browser source still gets its sound.
+    const fallback = await playViaWebAudio(url, webAudioDecoder(), PLAYBACK_TIMEOUT_MS);
+    playbackLog(`sound-webaudio ${where}`, fallback);
+  })();
 }
 
 /** Plays a donor voice message, resolving when it ends, fails or stalls. */
 async function playVoiceMessage(path: string): Promise<void> {
-  await playAudioToEnd(new Audio(`${VOICE_STORAGE_BASE}/${path}`));
+  const where = audioLocation(`${VOICE_STORAGE_BASE}/${path}`);
+  await playAudioToEnd(new Audio(`${VOICE_STORAGE_BASE}/${path}`), PLAYBACK_TIMEOUT_MS, (d) =>
+    playbackLog(`donor-voice ${where}`, d.outcome, d.errorName),
+  );
 }
 
 function triggerAlert(
@@ -190,10 +490,7 @@ function triggerAlert(
   const effective = applyTier(settings, tier);
   setCurrentAlert(tip);
 
-  if (effective.sound_url) {
-    const audio = new Audio(effective.sound_url);
-    audio.play().catch(() => {});
-  }
+  if (effective.sound_url) playSoundEffect(effective.sound_url);
 
   // The alert stays up until the speech finishes, then for whatever is left of
   // its configured duration, with a floor so a short phrase still gets read.
@@ -213,7 +510,7 @@ function triggerAlert(
     const tpl = effective.message_template ??
       "Thank you {name} for {amount} {currency}!";
     const startedAt = Date.now();
-    void speak(parseTemplate(tpl, tip), voice).then(() => {
+    void speak(speechText(tpl, tip), voice).then(() => {
       scheduleClear(Date.now() - startedAt);
     });
   };
@@ -253,6 +550,7 @@ export default function AlertsOverlayPage({
   const [lookupError, setLookupError] = useState(false);
 
   const seenRef = useRef<Set<string>>(new Set());
+  const queueDepthRef = useRef<number>(0);
   const sinceRef = useRef<string>(new Date().toISOString());
   const bootedAtRef = useRef<string>(new Date().toISOString());
   const lastConfigJsonRef = useRef<string>("");
@@ -273,6 +571,9 @@ export default function AlertsOverlayPage({
     if ((tip.created_at ?? "") < bootedAtRef.current) return;
     seenRef.current.add(tip.id);
     setQueue((q) => [...q, tip]);
+    // Count only: the tip carries the donor's name and message, neither of which
+    // may reach a log.
+    console.warn(`[alerts] tip queued depth=${queueDepthRef.current + 1}`);
   }
 
   // Play queued alerts one at a time
@@ -282,6 +583,8 @@ export default function AlertsOverlayPage({
     if (!s) return;
     const [next, ...rest] = queue;
     setQueue(rest);
+    queueDepthRef.current = rest.length;
+    console.warn(`[alerts] drain depth=${rest.length + 1}`);
     triggerAlert(
       next,
       s,
@@ -308,12 +611,15 @@ export default function AlertsOverlayPage({
 
     async function initOverlay() {
       if (!token) {
+        console.warn(`[alerts] init no-token visibility=${document.visibilityState}`);
         if (!disposed) {
           setLookupError(true);
           setLoading(false);
         }
         return;
       }
+
+      console.warn(`[alerts] init visibility=${document.visibilityState}`);
 
       try {
         const { data, error } = await supabase.rpc("streamkit_resolve_overlay", {
@@ -337,7 +643,7 @@ export default function AlertsOverlayPage({
             show_donor_profile: (cfg as AlertSettings).show_donor_profile ?? true,
             message_template:
               (cfg as AlertSettings).message_template ??
-              "áž¢ážšáž‚áž»ážŽ {name} ážŸáž˜áŸ’ážšáž¶áž”áŸ‹áž€áž¶ážšáž§áž”ážáŸ’ážáž˜ {amount}{currency}",
+              "អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency}",
             text_color: (cfg as AlertSettings).text_color ?? "#FFFFFF",
             bg_color: (cfg as AlertSettings).bg_color ?? "#000000",
             enable_card: (cfg as AlertSettings).enable_card ?? false,
@@ -376,6 +682,10 @@ export default function AlertsOverlayPage({
 
         applyConfig(config);
         lastConfigJsonRef.current = JSON.stringify(config);
+        console.warn(
+          `[alerts] init ready tts=${config.tts_enabled ? "on" : "off"} ` +
+            `template=${config.message_template ? "set" : "missing"}`,
+        );
 
         // Instant path: realtime push
         channel = supabase
@@ -395,7 +705,11 @@ export default function AlertsOverlayPage({
               }
             },
           )
-          .subscribe();
+          .subscribe((status) => {
+            // Realtime is the instant path; if it never reaches SUBSCRIBED the
+            // 3s poll below is the only thing left delivering alerts.
+            console.warn(`[alerts] realtime ${status}`);
+          });
 
         // Reliable path: poll recent tips every 3s (works even if realtime is blocked).
         // Baseline comes from DB timestamps (client clock may be ahead of the server).
@@ -415,17 +729,41 @@ export default function AlertsOverlayPage({
           // keep default baseline
         }
 
+        let pollTicks = 0;
+        let pollFailureLogged = false;
         pollTimer = window.setInterval(async () => {
+          pollTicks += 1;
+          // Chromium freezes or heavily throttles timers in a page it considers
+          // hidden, which is exactly what an OBS browser source becomes when its
+          // scene item is hidden. A 3s interval that silently stops is the one
+          // failure the rest of this cannot detect, so say when a tick happened
+          // and what the visibility state was.
+          if (pollTicks === 1 || pollTicks % 20 === 0) {
+            console.warn(
+              `[alerts] poll tick=${pollTicks} visibility=${document.visibilityState}`,
+            );
+          }
           try {
-            const { data: recent } = await supabase.rpc("streamkit_recent_alerts", {
+            const { data: recent, error } = await supabase.rpc("streamkit_recent_alerts", {
               p_token: token,
               p_since: sinceRef.current,
             });
+            if (error) {
+              if (!pollFailureLogged) {
+                pollFailureLogged = true;
+                console.warn(`[alerts] poll error=${error.code ?? "unknown"}`);
+              }
+              return;
+            }
             if (disposed || !recent || recent.length === 0) return;
+            console.warn(`[alerts] poll new=${recent.length}`);
             sinceRef.current = (recent[recent.length - 1] as Tip).created_at;
             (recent as Tip[]).forEach(enqueueTip);
-          } catch {
-            // keep polling
+          } catch (error) {
+            if (!pollFailureLogged) {
+              pollFailureLogged = true;
+              console.warn(`[alerts] poll threw=${errorNameOf(error) ?? "unknown"}`);
+            }
           }
         }, 3000);
 

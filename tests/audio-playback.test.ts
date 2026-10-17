@@ -3,7 +3,9 @@ import { afterEach, describe, it, mock } from "node:test";
 
 import {
   playAudioToEnd,
+  playViaWebAudio,
   PLAYBACK_TIMEOUT_MS,
+  type PlaybackDiagnostic,
   type PlaybackOutcome,
 } from "../src/lib/overlay/audio-playback.ts";
 
@@ -186,6 +188,209 @@ describe("playAudioToEnd — the stall this module exists for", () => {
     await Promise.resolve();
 
     assert.deepEqual(seen, ["timeout"], "a late event must not rewrite the outcome");
+  });
+});
+
+describe("playAudioToEnd — diagnostics", () => {
+  it("reports a normal end with no error name", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    const reports: PlaybackDiagnostic[] = [];
+    const { settled } = track(playAudioToEnd(audio, undefined, (d) => reports.push(d)));
+
+    audio.emit("ended");
+    await settled;
+    assert.deepEqual(reports, [{ outcome: "ended", errorName: undefined }]);
+  });
+
+  it("reports the name of a rejected play(), which is the autoplay question", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    audio.playRejects = Promise.reject(
+      Object.assign(new Error("play() blocked"), { name: "NotAllowedError" }),
+    );
+    const reports: PlaybackDiagnostic[] = [];
+    const { settled } = track(playAudioToEnd(audio, undefined, (d) => reports.push(d)));
+
+    assert.equal(await settled, "error");
+    assert.deepEqual(reports, [{ outcome: "error", errorName: "NotAllowedError" }]);
+  });
+
+  it("reports the name of a synchronous throw", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    audio.playThrows = true;
+    const reports: PlaybackDiagnostic[] = [];
+    const { settled } = track(playAudioToEnd(audio, undefined, (d) => reports.push(d)));
+
+    assert.equal(await settled, "error");
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].outcome, "error");
+  });
+
+  it("reports a timeout, which is how a stall is told from a refusal", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    const reports: PlaybackDiagnostic[] = [];
+    const { settled } = track(playAudioToEnd(audio, undefined, (d) => reports.push(d)));
+
+    mock.timers.tick(PLAYBACK_TIMEOUT_MS);
+    await settled;
+    assert.deepEqual(reports, [{ outcome: "timeout", errorName: undefined }]);
+  });
+
+  it("reports exactly once even when a later event arrives", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    const reports: PlaybackDiagnostic[] = [];
+    const { settled } = track(playAudioToEnd(audio, undefined, (d) => reports.push(d)));
+
+    audio.emit("ended");
+    await settled;
+    audio.emit("error");
+    await Promise.resolve();
+    assert.equal(reports.length, 1);
+  });
+
+  it("a reporter that throws still leaves the caller with its outcome", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    const { settled } = track(
+      playAudioToEnd(audio, undefined, () => {
+        throw new Error("reporter exploded");
+      }),
+    );
+
+    audio.emit("ended");
+    assert.equal(await settled, "ended");
+  });
+
+  it("stays quiet when no reporter is supplied", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    const { settled } = track(playAudioToEnd(audio));
+
+    audio.emit("ended");
+    assert.equal(await settled, "ended");
+  });
+});
+
+describe("playViaWebAudio", () => {
+  /** A decoder whose voice the test drives by hand. */
+  function fakeVoice() {
+    let resolveFinished: () => void = () => {};
+    let rejectFinished: (e: unknown) => void = () => {};
+    const finished = new Promise<void>((res, rej) => {
+      resolveFinished = res;
+      rejectFinished = rej;
+    });
+    const state = { decoded: [] as string[], stopped: 0, plays: 0 };
+    const decoder = {
+      decode(url: string) {
+        state.decoded.push(url);
+        return Promise.resolve({
+          play() {
+            state.plays += 1;
+            return { finished, stop() { state.stopped += 1; } };
+          },
+        });
+      },
+    };
+    return {
+      state,
+      finish: () => resolveFinished(),
+      fail: () => rejectFinished(new Error("source error")),
+      decoder,
+    };
+  }
+
+  /**
+   * Lets `playViaWebAudio` get past its `await decode(...)` so the timeout is
+   * actually registered before a mocked clock is advanced. `setImmediate` is
+   * used because `mock.timers` replaces `setTimeout`.
+   */
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  it("decodes the url it was given and resolves ended when it finishes", async () => {
+    const voice = fakeVoice();
+    const promise = playViaWebAudio("https://x.test/a.mp3", voice.decoder);
+
+    voice.finish();
+    assert.equal(await promise, "ended");
+    assert.deepEqual(voice.state.decoded, ["https://x.test/a.mp3"]);
+    assert.equal(voice.state.plays, 1);
+  });
+
+  it("resolves error when the fetch or decode fails", async () => {
+    const outcome = await playViaWebAudio("https://x.test/a.mp3", {
+      decode: () => Promise.reject(new Error("audio fetch 403")),
+    });
+    assert.equal(outcome, "error");
+  });
+
+  it("resolves error when a decoder throws while starting the voice", async () => {
+    const outcome = await playViaWebAudio("https://x.test/a.mp3", {
+      decode: () => Promise.resolve({
+        play() {
+          throw new Error("no destination");
+        },
+      }),
+    });
+    assert.equal(outcome, "error");
+  });
+
+  it("resolves error when the source fails mid-playback", async () => {
+    const voice = fakeVoice();
+    const promise = playViaWebAudio("https://x.test/a.mp3", voice.decoder);
+    await flush();
+    voice.fail();
+    assert.equal(await promise, "error");
+  });
+
+  it("stops a stalled clip and bounds it, so the queue moves on", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const voice = fakeVoice();
+    const promise = playViaWebAudio("https://x.test/a.mp3", voice.decoder, PLAYBACK_TIMEOUT_MS);
+    await flush();
+
+    mock.timers.tick(PLAYBACK_TIMEOUT_MS);
+    assert.equal(await promise, "timeout");
+    assert.equal(voice.state.stopped, 1, "a stalled clip must be stopped, not left talking");
+  });
+
+  it("resolves exactly once when a late finish follows a timeout", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const voice = fakeVoice();
+    const seen: PlaybackOutcome[] = [];
+    const promise = playViaWebAudio("https://x.test/a.mp3", voice.decoder, PLAYBACK_TIMEOUT_MS);
+    promise.then((o) => seen.push(o));
+    await flush();
+
+    mock.timers.tick(PLAYBACK_TIMEOUT_MS);
+    await promise;
+    voice.finish();
+    await flush();
+
+    assert.deepEqual(seen, ["timeout"]);
+  });
+
+  it("does not let a later timeout overwrite an outcome already settled", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const voice = fakeVoice();
+    const seen: PlaybackOutcome[] = [];
+    const promise = playViaWebAudio("https://x.test/a.mp3", voice.decoder, PLAYBACK_TIMEOUT_MS);
+    promise.then((o) => seen.push(o));
+    await flush();
+
+    // `finished` settles through a microtask, so let it land before the clock
+    // moves; otherwise the tick would win a race it never really had.
+    voice.finish();
+    await flush();
+    mock.timers.tick(PLAYBACK_TIMEOUT_MS * 2);
+    await promise;
+    await flush();
+
+    assert.deepEqual(seen, ["ended"]);
   });
 });
 

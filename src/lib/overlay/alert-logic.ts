@@ -82,6 +82,26 @@ export function parseTemplate(template: string, tip: TemplateTip): string {
     .replace(/\{avatar\}/g, "");
 }
 
+/**
+ * The line the alert speaks: the rendered acknowledgement, then the donor's own
+ * message when the template does not already carry it.
+ *
+ * `parseTemplate` alone drops the message for any template without `{message}`,
+ * which is what shipped: the donor's words never reached the voice. Appending
+ * here rather than editing the creator's stored template keeps that content
+ * theirs to change, and the placeholder check keeps a template that *does* use
+ * `{message}` from being spoken twice.
+ */
+export function speechText(template: string, tip: TemplateTip): string {
+  const acknowledgement = parseTemplate(template, tip).trim();
+  const message = (tip.message ?? "").trim();
+  // Exactly the token `parseTemplate` substitutes, so the two agree: anything
+  // parseTemplate leaves literal is not a placeholder, and must not silence the
+  // donor's message.
+  if (!message || template.includes("{message}")) return acknowledgement;
+  return acknowledgement ? `${acknowledgement} ${message}` : message;
+}
+
 export function highlightText(text: string, highlightColor: string): string {
   return text.replace(
     /(\d[\d,\.]*\s*(?:USD|KHR|$|£|€)|[\$£€][\d,\.]+)/g,

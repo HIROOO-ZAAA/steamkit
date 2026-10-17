@@ -67,11 +67,32 @@ export async function POST(request: Request) {
     return json({ error: "No sample was sent." }, 400);
   }
 
-  // Optional, but it is what lets the engine clone a clip over 15s without an
-  // ASR model. Capped well under the 300 the synthesis route allows: this is a
-  // transcript of one short passage, and a long one is a sign the creator
-  // pasted the wrong thing.
+  // Required, not optional.
+  //
+  // VoiceStudio transcribes the reference clip itself when no transcript is
+  // supplied, and that changes what a clone IS rather than how it sounds. It
+  // runs speech-to-text on the GPU on every synthesis, next to an OmniVoice
+  // model that is already resident — on this instance that path fails outright
+  // with `torch.AcceleratorError: CUDA error: unknown error`, and the sample
+  // length cap drops from 20s to 15s.
+  //
+  // Measured on the same box, same clip, same line:
+  //   with a transcript    2.9s / 3.4s / 3.6s
+  //   without one          3.7s / 4.8s / 6.0s
+  // which is the difference between a warm clone finishing inside the alert's
+  // synthesis budget and tripping it. A clone that is slow enough to time out
+  // costs the alert its voice, so the transcript is load-bearing.
+  //
+  // Capped well under the 300 the synthesis route allows: this is a transcript
+  // of one short passage, and a long one is a sign the creator pasted the
+  // wrong thing.
   const refText = String(form.get("ref_text") ?? "").trim().slice(0, 600);
+  if (!refText) {
+    return json(
+      { error: "Add the words said in the sample. Without them the engine has to transcribe it on every alert." },
+      400,
+    );
+  }
 
   const mime = sample.type.split(";")[0]!.trim().toLowerCase();
   if (!isAllowedMime(mime)) {

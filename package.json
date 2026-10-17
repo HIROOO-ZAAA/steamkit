@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"tests/**/*.test.ts\"",
+    "voice:transcribe": "node scripts/voice-transcribe.mjs",
     "kit-client:bridge": "node scripts/kit-client-bridge.mjs"
   },
   "dependencies": {

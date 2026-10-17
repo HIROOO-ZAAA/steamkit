@@ -168,31 +168,74 @@ export async function createVoiceStudioVoice(
 }
 
 /**
+ * One synthesis at a time per process.
+ *
+ * VoiceStudio runs a GPU worker pool and on a creator's own card it is ONE
+ * worker. It refuses overlapping work with:
+ *
+ *   `the local GPU worker pool is saturated (0 running, 1 already queued on
+ *   1 worker(s))`
+ *
+ * Aborting our fetch does NOT cancel the work either — the instance keeps
+ * synthesising for whoever walked away, holding the worker for the rest of its
+ * natural runtime. So a timeout is worse than it looks: it converts a slow
+ * alert into a queue of abandoned jobs that starve every alert after it.
+ *
+ * This lives in the provider layer rather than in one route on purpose. There
+ * are two callers that synthesise — the overlay route and the dashboard's
+ * clone preview — and a gate that only one of them respects is not a gate: the
+ * measured `saturated` bursts came from previewing a clone while the overlay
+ * was mid-alert.
+ *
+ * Best effort and per-process. It does not coordinate across serverless
+ * instances, which is why a timeout must still not retry: on another instance
+ * the gate is not there to protect the worker.
+ */
+let synthesisChain: Promise<unknown> = Promise.resolve();
+
+export function onTheProvider<T>(fn: () => Promise<T>): Promise<T> {
+  const result = synthesisChain.then(fn, fn);
+  // Keep the chain alive whatever the outcome, and never hand the next caller
+  // the previous caller's rejection.
+  synthesisChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/**
  * Renders `text` in `voiceId` and returns the raw audio bytes.
  *
  * The caller's signal is passed through on purpose: an alert is on screen for
  * a few seconds, so a caller that gives up must abort the upstream request
  * rather than leave it running on the GPU.
+ *
+ * Queued behind `onTheProvider`. The caller owns the clock either way — the
+ * queue only stops us piling onto a one-worker pool, it does not extend a
+ * caller's deadline.
  */
 export async function synthesizeVoiceStudioSpeech(
   voiceId: string,
   text: string,
   signal: AbortSignal,
 ): Promise<ArrayBuffer> {
-  const res = await fetch(`${baseUrl()}/v1/audio/speech`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({
-      model: "omnivoice",
-      input: text,
-      voice: voiceId,
-      response_format: "mp3",
-    }),
-    signal,
-  });
+  return onTheProvider(async () => {
+    const res = await fetch(`${baseUrl()}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        model: "omnivoice",
+        input: text,
+        voice: voiceId,
+        response_format: "mp3",
+      }),
+      signal,
+    });
 
-  if (!res.ok) throw await providerError(res);
-  return res.arrayBuffer();
+    if (!res.ok) throw await providerError(res);
+    return res.arrayBuffer();
+  });
 }
 
 /**
