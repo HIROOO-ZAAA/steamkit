@@ -1,7 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+// Renamed from `middleware.ts` on 2026-10-17: Next.js 16 calls this Proxy
+// ("middleware" is deprecated and warns on every dev boot). Same behaviour,
+// same file location — one level above `app`.
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -49,7 +52,14 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  // `/_next` is excluded as a WHOLE, not as `_next/static` and `_next/image`.
+  //
+  // The websocket upgrade for HMR arrives at `/_next/hmr`, which the narrower
+  // pattern did match: Proxy ran `supabase.auth.getUser()` on it and answered
+  // with `NextResponse.next()`, which cannot be a websocket upgrade. Chrome
+  // reported `net::ERR_INVALID_HTTP_RESPONSE` and, in development, no overlay
+  // page hydrated at all — no effects, no Supabase request, no console output.
+  // Every client-component overlay was untestable in `npm run dev` until this
+  // was widened. Nothing here needs to guard Next's own routes.
+  matcher: ['/((?!_next|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }
