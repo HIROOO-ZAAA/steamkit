@@ -44,6 +44,28 @@ create table if not exists public.voice_settings (
   created_at timestamp with time zone not null default timezone('utc'::text, now())
 );
 
+-- `cloning_consent`, `cloned_voice_id`, `provider` and `voice_id` are declared
+-- here even though this migration predates voice cloning. They exist only in
+-- supabase_schema.sql, and six LATER migrations read all four:
+--
+--   20261017000000_elevenlabs_voice_clones   (provider, voice_id, cloned_voice_id, cloning_enabled)
+--   20261019000006_overlay_voice_identity    (provider, voice_id, cloned_voice_id, cloning_enabled)
+--   20261019000007_alert_tiers               (cloned_voice_id, cloning_enabled)
+--   20261019000008_alert_tier_text_delay     (cloned_voice_id, cloning_enabled)
+--   20261019000011_voice_clones              (provider, voice_id, cloned_voice_id, cloning_enabled)
+--   20261019000013_alert_tts_volume          (provider, voice_id, cloned_voice_id, cloning_enabled)
+--
+-- `create table if not exists` is a no-op when the table already exists, so on a
+-- database seeded from the master schema these columns survived -- which is why
+-- nobody noticed. Rebuild from MIGRATIONS ALONE and every one of those files
+-- failed on a table that was missing four of its own columns.
+alter table public.voice_settings
+  add column if not exists provider text not null default 'browser',
+  add column if not exists voice_id text,
+  add column if not exists cloning_enabled boolean not null default false,
+  add column if not exists cloning_consent boolean not null default false,
+  add column if not exists cloned_voice_id uuid;
+
 alter table public.voice_settings enable row level security;
 
 grant select, insert, update on table public.voice_settings to authenticated;

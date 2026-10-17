@@ -32,9 +32,24 @@
 --   no third-party voice is redistributed either.
 
 -- ── Voice clones ─────────────────────────────────────────────────────────────
+-- The owning column is `owner_id`, not `user_id`.
+--
+-- This file originally created the table with `user_id` and then built its RLS
+-- policy and its ownership trigger on that name. But every migration before it
+-- in filename order -- 20261017000000_elevenlabs_voice_clones and
+-- 20261017000001_voice_clones_owner_id -- renames the column to `owner_id`, and
+-- so does the live database. So `create table if not exists` here was already a
+-- no-op against a table that had `owner_id`, and the two statements after it
+-- then referenced a column that does not exist:
+--
+--   42703 column "user_id" does not exist
+--
+-- A policy naming a missing column raises that on EVERY statement touching the
+-- table, not only on creation, and no later migration repairs it. The same
+-- mismatch in the trigger body below made every write to `voice_settings` fail.
 create table if not exists public.voice_clones (
   id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) on delete cascade not null,
+  owner_id uuid references auth.users(id) on delete cascade not null,
   -- Creator-facing name, e.g. "My streamer voice". Never used as a path.
   label text not null,
   -- Object path inside the private `voice-clones` bucket. Generated, never
@@ -58,8 +73,8 @@ drop policy if exists "Users manage own voice clones" on public.voice_clones;
 create policy "Users manage own voice clones"
   on public.voice_clones
   for all to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
 
 -- One clone per id, obviously, and a creator cannot point `voice_settings`
 -- at somebody else's row: the foreign key below has no ownership condition of
@@ -76,7 +91,7 @@ begin
   if new.active_clone_id is not null and not exists (
     select 1 from public.voice_clones as clones
     where clones.id = new.active_clone_id
-      and clones.user_id = new.user_id
+      and clones.owner_id = new.user_id
   ) then
     raise exception 'voice clone does not belong to this creator'
       using errcode = '42501';

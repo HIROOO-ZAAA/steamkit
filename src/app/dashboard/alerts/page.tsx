@@ -2,7 +2,13 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { amountForTierTest, parseTemplate, speechText, splitSpeechText } from "@/lib/overlay/alert-logic";
+import {
+  ALERT_DURATION_SECONDS,
+  amountForTierTest,
+  parseTemplate,
+  speechText,
+  splitSpeechText,
+} from "@/lib/overlay/alert-logic";
 import styles from "./alerts.module.css";
 import {
   Copy,
@@ -59,6 +65,19 @@ type VoiceCloneOption = {
   label: string;
   consent_at: string | null;
   voicestudio_voice_id: string | null;
+};
+
+type PreviewSpeechConfig = {
+  amount: number;
+  currency: "USD" | "KHR";
+  message: string;
+  template: string;
+  volume: number;
+};
+
+const TEST_AMOUNT_PRESETS: Record<"USD" | "KHR", string[]> = {
+  USD: ["$0.01", "$0.50", "$1", "$2", "$10"],
+  KHR: ["៛1,000", "៛5,000", "៛10,000", "៛20,000", "៛50,000"],
 };
 
 /** Raw `alert_settings` row as it comes back from the table. */
@@ -166,7 +185,7 @@ export default function AlertSettingsPage() {
 
   // Template & Timing
   const [template, setTemplate] = useState("អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency}");
-  const [alertDuration, setAlertDuration] = useState(6);
+  const alertDuration = ALERT_DURATION_SECONDS;
   const [textDelay, setTextDelay] = useState(2);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [ttsVolume, setTtsVolume] = useState(100);
@@ -234,7 +253,6 @@ export default function AlertSettingsPage() {
    */
   function applySettingsRow(row: RawAlertSettings | null) {
     if (!row) return;
-    setAlertDuration(row.duration_seconds ?? 6);
     setSelectedSoundUrl(row.sound_url || SOUND_PRESETS[0].url);
     setAlertAnimation(row.alert_animation || row.animation_type || "bounceIn");
     setHighlightColor(row.font_color || "#32C3A6");
@@ -448,18 +466,23 @@ export default function AlertSettingsPage() {
     audioRef.current = audio;
   };
 
-  const playPreviewSpeech = async (): Promise<"clone" | "fallback" | "failed"> => {
-    if (!ttsEnabled) return "failed";
-
+  const playPreviewSpeech = async (
+    savedTest: PreviewSpeechConfig | null = null,
+  ): Promise<"clone" | "fallback" | "failed"> => {
+    if (!savedTest && !ttsEnabled) return "failed";
     const parsedUrl = obsUrl ? new URL(obsUrl, window.location.origin) : null;
     const overlayToken = parsedUrl?.searchParams.get("token");
-    const amountNumber = Number(selectedAmount.replace(/[^0-9.]/g, "")) ||
-      (currency === "KHR" ? 1000 : 10);
-    const text = speechText(template, {
+    const amountNumber = savedTest?.amount ??
+      (Number(selectedAmount.replace(/[^0-9.]/g, "")) || (currency === "KHR" ? 1000 : 10));
+    const testCurrency = savedTest?.currency ?? currency;
+    const testMessage = savedTest?.message ?? (customTestMessage || "This is a test alert. No payment was made.");
+    const testTemplate = savedTest?.template ?? template;
+    const volume = (savedTest?.volume ?? ttsVolume) / 100;
+    const text = speechText(testTemplate, {
       tipper_name: "John",
       amount: amountNumber,
-      currency,
-      message: customTestMessage || "This is a test alert. No payment was made.",
+      currency: testCurrency,
+      message: testMessage,
     });
 
     let usedFallback = false;
@@ -482,7 +505,7 @@ export default function AlertSettingsPage() {
 
           if (response.ok && payload?.audioUrl) {
             const audio = new Audio(payload.audioUrl);
-            audio.volume = ttsVolume / 100;
+            audio.volume = volume;
             speechAudioRef.current?.pause();
             speechAudioRef.current = audio;
             let finishPlayback = () => {};
@@ -522,7 +545,7 @@ export default function AlertSettingsPage() {
       if (!chunkPlayed && "speechSynthesis" in window) {
         const browserPlayed = await new Promise<boolean>((resolve) => {
           const utterance = new SpeechSynthesisUtterance(chunk.replace(/<[^>]+>/g, ""));
-          utterance.volume = ttsVolume / 100;
+          utterance.volume = volume;
           utterance.onend = () => resolve(true);
           utterance.onerror = () => resolve(false);
           window.speechSynthesis.speak(utterance);
@@ -539,6 +562,7 @@ export default function AlertSettingsPage() {
   const showCanvasPreview = async (
     readAloud = true,
     durationSeconds = alertDuration,
+    savedTest: PreviewSpeechConfig | null = null,
   ): Promise<"clone" | "fallback" | "failed" | "disabled"> => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     setIsTesting(true);
@@ -546,9 +570,9 @@ export default function AlertSettingsPage() {
     playAlertSound();
     previewTimerRef.current = setTimeout(() => setIsTesting(false), Math.max(0, durationSeconds) * 1000);
 
-    if (readAloud && ttsEnabled) {
+    if (readAloud && (ttsEnabled || savedTest)) {
       try {
-        return await playPreviewSpeech();
+        return await playPreviewSpeech(savedTest);
       } catch {
         return "failed";
       }
@@ -571,7 +595,7 @@ export default function AlertSettingsPage() {
       const savedTestSettings = activeTierId
         ? tierRows[activeTierId] ?? tierRows.base
         : tierRows.base;
-      const savedTestDuration = savedTestSettings?.duration_seconds ?? 6;
+      const savedTestDuration = ALERT_DURATION_SECONDS;
       const testMessage = customTestMessage || "This is a test alert. No payment was made.";
       const response = await fetch("/api/alerts/test", {
         method: "POST",
@@ -594,8 +618,19 @@ export default function AlertSettingsPage() {
         message: testMessage,
         template: savedTestSettings?.message_template || template,
       });
-      void showCanvasPreview(false, savedTestDuration);
-      showToast(`${activeTierName} test alert sent to OBS. It uses saved alert settings.`);
+      const speech = showCanvasPreview(true, savedTestDuration, {
+        amount,
+        currency,
+        message: testMessage,
+        template: savedTestSettings?.message_template || template,
+        volume: savedTestSettings?.tts_volume ?? ttsVolume,
+      });
+      showToast(`${activeTierName} test alert sent to OBS; reading the saved template.`);
+      void speech.then((result) => {
+        if (result === "failed") {
+          showToast("OBS test sent, but dashboard speech playback failed. Check the TTS service and browser audio output.");
+        }
+      });
     } catch {
       showToast("Could not send the test alert. Check your connection and OBS overlay.");
     } finally {
@@ -793,7 +828,8 @@ export default function AlertSettingsPage() {
         : `$${testPreview.amount.toFixed(2)}`
       : selectedAmount;
     const escapedAmount = displayAmount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(John|${escapedAmount}\\s*${currency})`, "g");
+    const displayCurrency = isTesting && testPreview ? testPreview.currency : currency;
+    const re = new RegExp(`(John|${escapedAmount}\\s*${displayCurrency})`, "g");
     return text.split(re).map((seg, i) =>
       seg === "John" || seg.startsWith(displayAmount) ? (
         <span key={i} style={{ color: highlightColor, fontWeight: 800 }}>{seg}</span>
@@ -1016,16 +1052,16 @@ export default function AlertSettingsPage() {
                   <button
                     type="button"
                     className={currency === "USD" ? styles.toggleActive : styles.toggleBtn}
-                    onClick={() => setCurrency("USD")}
+                    onClick={() => { setCurrency("USD"); setSelectedAmount((current) => current.startsWith("$") ? current : TEST_AMOUNT_PRESETS.USD[3]!); }}
                   >
-                    USD
+                    USD ($)
                   </button>
                   <button
                     type="button"
                     className={currency === "KHR" ? styles.toggleActive : styles.toggleBtn}
-                    onClick={() => setCurrency("KHR")}
+                    onClick={() => { setCurrency("KHR"); setSelectedAmount((current) => current.startsWith("៛") ? current : TEST_AMOUNT_PRESETS.KHR[0]!); }}
                   >
-                    KHR
+                    KHR (៛)
                   </button>
                 </div>
               </div>
@@ -1034,7 +1070,7 @@ export default function AlertSettingsPage() {
               <div className={styles.actionGroup}>
                 <span className={styles.actionLabel}>AMOUNT:</span>
                 <div className={styles.chipRow}>
-                  {["$0.01", "$0.50", "$1", "$2", "$10"].map((amt) => (
+                  {TEST_AMOUNT_PRESETS[currency].map((amt) => (
                     <button
                       key={amt}
                       type="button"
@@ -1455,11 +1491,12 @@ export default function AlertSettingsPage() {
               <label className={styles.label}>ALERT DURATION ({alertDuration}S)</label>
               <input
                 type="range"
-                min="2"
-                max="30"
+                min={ALERT_DURATION_SECONDS}
+                max={ALERT_DURATION_SECONDS}
                 value={alertDuration}
                 className={styles.slider}
-                onChange={(e) => setAlertDuration(Number(e.target.value))}
+                disabled
+                aria-label="Alert duration is fixed at two seconds"
               />
             </div>
 

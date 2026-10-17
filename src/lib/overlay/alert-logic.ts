@@ -1,5 +1,8 @@
 import type { Tip } from "@/lib/types";
 
+/** Alert visuals are intentionally brief; speech continues after they fade. */
+export const ALERT_DURATION_SECONDS = 2;
+
 /**
  * Pure alert-rendering logic, extracted from the overlay page so it can be
  * tested. `src/app/overlay/alerts/page.tsx` is a client component full of
@@ -132,12 +135,30 @@ export function splitSpeechText(text: string, limit = MAX_SPEECH_CHUNK_CHARS): s
  */
 export function speechText(template: string, tip: TemplateTip): string {
   const message = (tip.message ?? "").trim();
-  if (!message) return parseTemplate(template, tip).trim();
+  const numericAmount = Number(tip.amount);
+  const speechAmount = tip.currency === "KHR"
+    ? Math.round(numericAmount).toLocaleString("en-US")
+    : numericAmount.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const isKhmer = /[\u1780-\u17ff]/.test(template);
+  const currencyName = tip.currency === "KHR"
+    ? isKhmer ? "រៀល" : "riel"
+    : isKhmer ? "ដុល្លារ" : Math.abs(numericAmount) === 1 ? "dollar" : "dollars";
+  const amountToken = "__STREAMKIT_SPOKEN_AMOUNT__";
+  const currencyToken = "__STREAMKIT_SPOKEN_CURRENCY__";
+  const hasCurrencyReference = /\{currency\}|\b(?:USD|KHR|dollars?|riel)\b|ដុល្លារ|រៀល/i.test(template);
+  const spokenTemplate = template
+    .replace(/\{amount\}\s*\{currency\}/g, `${amountToken} ${currencyToken}`)
+    .replace(/\{currency\}|\b(?:USD|KHR)\b/gi, currencyToken)
+    .replace(/\{amount\}/g, hasCurrencyReference ? amountToken : `${amountToken} ${currencyToken}`);
+  const renderSpokenTemplate = (value: TemplateTip) =>
+    parseTemplate(spokenTemplate, value)
+      .replaceAll(amountToken, speechAmount)
+      .replaceAll(currencyToken, currencyName);
+  if (!message) return renderSpokenTemplate(tip).trim();
   // Keep the alert acknowledgement first even when a creator put {message}
   // somewhere in the middle of their template. This guarantees the requested
   // donor -> amount -> viewer message order and prevents speaking it twice.
-  const acknowledgementTemplate = template.replace(/\{message\}/g, "");
-  const acknowledgement = parseTemplate(acknowledgementTemplate, { ...tip, message: "" })
+  const acknowledgement = renderSpokenTemplate({ ...tip, message: "" })
     .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/[,;:]\s*$/, "")
     .trim();
@@ -222,6 +243,11 @@ export function amountForTierTest(
   // amount; choosing their shared minimum lets pickTier's stable ordering win.
   if (targetMaximum < targetMinimum) return targetMinimum;
   return Math.min(Math.max(normalizedAmount, targetMinimum), targetMaximum);
+}
+
+/** Test clicks always exercise speech; real donations obey the saved TTS toggle. */
+export function shouldSpeakAlert(ttsEnabled: boolean, isTestAlert: boolean): boolean {
+  return ttsEnabled || isTestAlert;
 }
 
 /**

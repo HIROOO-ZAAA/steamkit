@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  ALERT_DURATION_SECONDS,
   amountForTierTest,
   applyTier,
   highlightText,
@@ -9,6 +10,7 @@ import {
   pickTier,
   splitSpeechText,
   speechText,
+  shouldSpeakAlert,
   type AlertSettings,
   type AlertTier,
   type TemplateTip,
@@ -147,9 +149,9 @@ describe("speechText", () => {
       tip({ tipper_name: "Alex", amount: 5, currency: "USD", message }),
     );
 
-    assert.equal(out, `Alex donated 5.00 dollars. ${message}`);
-    assert.ok(out.indexOf("Alex") < out.indexOf("5.00"));
-    assert.ok(out.indexOf("5.00") < out.indexOf(message));
+    assert.equal(out, `Alex donated 5 dollars. ${message}`);
+    assert.ok(out.indexOf("Alex") < out.indexOf("5 dollars"));
+    assert.ok(out.indexOf("5 dollars") < out.indexOf(message));
   });
 
   it("leaves a message-less donation as just the acknowledgement", () => {
@@ -182,6 +184,33 @@ describe("speechText", () => {
     assert.equal(
       speechText("Thanks {name}", tip({ message: longMessage })),
       `Thanks Sophea ${longMessage}`,
+    );
+  });
+
+  it("speaks currency names and natural whole-number amounts", () => {
+    assert.equal(
+      speechText("{name} donated {amount}{currency}.", tip({ tipper_name: "Alex", amount: 5, currency: "USD" })),
+      "Alex donated 5 dollars.",
+    );
+    assert.equal(
+      speechText("{name} donated {amount}{currency}.", tip({ tipper_name: "Alex", amount: 1, currency: "USD" })),
+      "Alex donated 1 dollar.",
+    );
+    assert.equal(
+      speechText("{name} donated {amount}{currency}.", tip({ tipper_name: "Alex", amount: 15000, currency: "KHR" })),
+      "Alex donated 15,000 riel.",
+    );
+    assert.equal(
+      speechText("{name} donated {amount}.", tip({ tipper_name: "Alex", amount: 15000, currency: "KHR" })),
+      "Alex donated 15,000 riel.",
+    );
+    assert.equal(
+      speechText("អរគុណ {name} {amount}{currency}", tip({ tipper_name: "Alex", amount: 15000, currency: "KHR" })),
+      "អរគុណ Alex 15,000 រៀល",
+    );
+    assert.equal(
+      speechText("អរគុណ {name} {amount}{currency}", tip({ tipper_name: "Alex", amount: 5, currency: "USD" })),
+      "អរគុណ Alex 5 ដុល្លារ",
     );
   });
 
@@ -276,6 +305,18 @@ describe("amountForTierTest", () => {
   it("uses the selected KHR tier and KHR step size", () => {
     assert.equal(amountForTierTest(1000, "KHR", "small", tiers), 5000);
     assert.equal(amountForTierTest(50000, "KHR", "small", tiers), 19999);
+  });
+});
+
+describe("alert test speech policy", () => {
+  it("keeps alerts on screen for exactly two seconds", () => {
+    assert.equal(ALERT_DURATION_SECONDS, 2);
+  });
+
+  it("always reads a test alert while real donations obey the saved toggle", () => {
+    assert.equal(shouldSpeakAlert(false, true), true);
+    assert.equal(shouldSpeakAlert(true, false), true);
+    assert.equal(shouldSpeakAlert(false, false), false);
   });
 });
 

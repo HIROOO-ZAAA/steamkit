@@ -33,8 +33,24 @@ create table if not exists public.telegram_device_events (
   created_at timestamptz not null default now()
 );
 
+-- The parent key is part of the index, and it has to be.
+--
+-- streamkit_claim_telegram_donation_notification in
+-- 20261001170000_telegram_payment_notifications.sql inserts with
+--   on conflict (device_id, (metadata ->> 'payment_id'))
+--     where event_type = 'donation_notification'
+-- and PostgreSQL requires a unique index whose key list matches that inference
+-- list exactly. Indexed on the expression alone, the insert raised
+--   42P10 there is no unique or exclusion constraint matching the ON CONFLICT
+-- specification
+-- at the moment a payment notification was claimed, which is the one path that
+-- cannot fail quietly.
+--
+-- It was also wrong on its own terms: without device_id, a payment_id could be
+-- claimed by exactly one device across the WHOLE platform rather than once per
+-- device. The group equivalent in 20261001180000 already carries the parent key.
 create unique index if not exists telegram_device_payment_notice_idx
-  on public.telegram_device_events ((metadata ->> 'payment_id'))
+  on public.telegram_device_events (device_id, (metadata ->> 'payment_id'))
   where event_type = 'donation_notification';
 
 alter table public.telegram_devices enable row level security;

@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Pencil, Play, Scissors, Trash2, WandSparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./voice-settings.module.css";
 
@@ -79,6 +80,46 @@ function sampleDuration(file: File): Promise<number | null> {
   });
 }
 
+function audioBufferToWav(buffer: AudioBuffer, startSeconds: number, endSeconds: number): Blob {
+  const channels = buffer.numberOfChannels;
+  const start = Math.floor(startSeconds * buffer.sampleRate);
+  const end = Math.min(buffer.length, Math.floor(endSeconds * buffer.sampleRate));
+  const frames = Math.max(0, end - start);
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = frames * blockAlign;
+  const bytes = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(bytes);
+  const writeText = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeText(8, "WAVE");
+  writeText(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  const channelData = Array.from({ length: channels }, (_, channel) => buffer.getChannelData(channel));
+  let offset = 44;
+  for (let frame = start; frame < end; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel]![frame]!));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
 export default function VoiceSettingsPage() {
   const [supabase] = useState(() => createClient());
   const [clones, setClones] = useState<VoiceClone[]>([]);
@@ -90,6 +131,12 @@ export default function VoiceSettingsPage() {
   const previewUrlRef = useRef<string | null>(null);
   const [refText, setRefText] = useState("");
   const [clipDuration, setClipDuration] = useState<number | null>(null);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [trimming, setTrimming] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptNotice, setTranscriptNotice] = useState<string | null>(null);
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"auto" | "km" | "en">("auto");
   const [consented, setConsented] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,7 +250,82 @@ export default function VoiceSettingsPage() {
     setPreviewUrl(previewUrlRef.current);
     setFile(picked);
     setClipDuration(null);
-    if (picked) setClipDuration(await sampleDuration(picked));
+    setTrimStart(0);
+    setTrimEnd(0);
+    setTranscriptNotice(null);
+    setRefText("");
+    setError(null);
+    if (picked) {
+      const duration = await sampleDuration(picked);
+      setClipDuration(duration);
+      setTrimEnd(duration ?? 0);
+    }
+  }
+
+  async function handleApplyTrim() {
+    if (!file || clipDuration === null) return;
+    const duration = trimEnd - trimStart;
+    if (trimStart < 0 || duration < SAMPLE_MIN_SECONDS) {
+      setError(`Keep at least ${SAMPLE_MIN_SECONDS} seconds of speech in the selection.`);
+      return;
+    }
+    if (duration > TRANSCRIPT_MAX_SECONDS) {
+      setError(`Keep the selected sample under ${TRANSCRIPT_MAX_SECONDS} seconds.`);
+      return;
+    }
+
+    setTrimming(true);
+    setError(null);
+    try {
+      const context = new AudioContext();
+      try {
+        const audioBuffer = await context.decodeAudioData(await file.arrayBuffer());
+        const wav = audioBufferToWav(audioBuffer, trimStart, trimEnd);
+        const trimmed = new File([wav], `${file.name.replace(/\.[^.]+$/, "")}-trimmed.wav`, {
+          type: "audio/wav",
+          lastModified: Date.now(),
+        });
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = URL.createObjectURL(trimmed);
+        setPreviewUrl(previewUrlRef.current);
+        setFile(trimmed);
+        setClipDuration(duration);
+        setTrimStart(0);
+        setTrimEnd(duration);
+        setTranscriptNotice("Trim applied. Generate or update the transcript for this clip, then check it against the audio.");
+        setRefText("");
+      } finally {
+        await context.close().catch(() => {});
+      }
+    } catch {
+      setError("This audio format could not be trimmed in the browser. Try a WAV, MP3, or M4A recording.");
+    } finally {
+      setTrimming(false);
+    }
+  }
+
+  async function handleAutoTranscribe() {
+    if (!file || transcribing) return;
+    setTranscribing(true);
+    setError(null);
+    setTranscriptNotice(null);
+    try {
+      const form = new FormData();
+      form.append("sample", file);
+      if (transcriptionLanguage !== "auto") form.append("language", transcriptionLanguage);
+      const res = await fetch("/api/voice-clones/transcribe", { method: "POST", body: form });
+      const payload = (await res.json().catch(() => null)) as { text?: string; error?: string } | null;
+      if (!res.ok || !payload?.text) {
+        setError(payload?.error ?? "Could not transcribe this sample. Enter the words manually.");
+        return;
+      }
+      setRefText(payload.text);
+      setTranscriptNotice("Draft generated. Listen to your recording and correct any mistakes before creating the clone, especially for Khmer speech.");
+    } catch {
+      setError("Transcription failed. Check the VoiceStudio service or enter the words manually.");
+    } finally {
+      setTranscribing(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -284,6 +406,27 @@ export default function VoiceSettingsPage() {
       setError("Could not remove that voice.");
     } finally {
       setRemovingId(null);
+    }
+  }
+
+  async function handleRename(clone: VoiceClone) {
+    const nextLabel = window.prompt("Rename voice clone", clone.label)?.trim();
+    if (!nextLabel || nextLabel === clone.label) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/voice-clones/${clone.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: nextLabel }),
+      });
+      const payload = (await res.json().catch(() => null)) as { clone?: VoiceClone; error?: string } | null;
+      if (!res.ok || !payload?.clone) {
+        setError(payload?.error ?? "Could not rename that voice.");
+        return;
+      }
+      setClones((current) => current.map((item) => item.id === clone.id ? payload.clone! : item));
+    } catch {
+      setError("Could not rename that voice. Check your connection and try again.");
     }
   }
 
@@ -431,51 +574,34 @@ export default function VoiceSettingsPage() {
                 </div>
                 <div className={styles.voiceActions}>
                   <button
-                    className={styles.secondaryButton}
-                    onClick={() =>
-                      void handleSetActive(
-                        isActive && spokenAlertsEnabled ? null : clone.id,
-                      )
-                    }
-                    disabled={!speakable || savingActiveId !== null}
-                    title={
-                      speakable
-                        ? isActive
-                          ? spokenAlertsEnabled
-                            ? "Stop using a cloned voice for alerts"
-                            : "Enable spoken alerts with this voice"
-                          : "Read your donation alerts in this voice"
-                        : "Only a voice with consent and a provider id can speak"
-                    }
-                  >
-                    {savingActiveId === clone.id
-                      ? "Saving…"
-                      : isActive
-                        ? spokenAlertsEnabled
-                          ? "Stop using for alerts"
-                          : "Enable spoken alerts"
-                        : "Use for alerts"}
-                  </button>
-                  <button
-                    className={styles.secondaryButton}
+                    type="button"
+                    className={styles.iconButton}
                     onClick={() => void handleTest(clone.id)}
-                    disabled={!speakable || testingId === clone.id}
-                    title={
-                      speakable
-                        ? "Play this voice speaking the test phrase"
-                        : !clone.consent_at
-                          ? "Record consent when creating the voice to preview it"
-                          : "This clone has no provider voice id, so there is nothing to speak"
-                    }
+                    disabled={!speakable || testingId !== null}
+                    aria-label={`Test ${clone.label}`}
+                    title={speakable ? "Test voice" : "This voice needs consent and a provider ID before it can speak"}
+                    aria-busy={testingId === clone.id}
                   >
-                    {testingId === clone.id ? "Generating…" : "Test this voice"}
+                    {testingId === clone.id ? <span className={styles.iconSpinner} aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}
                   </button>
                   <button
-                    className={styles.secondaryButton}
-                    onClick={() => void handleDelete(clone.id)}
-                    disabled={removingId === clone.id}
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={() => void handleRename(clone)}
+                    aria-label={`Rename ${clone.label}`}
+                    title="Rename voice"
                   >
-                    {removingId === clone.id ? "Removing…" : "Remove"}
+                    <Pencil size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.iconButton} ${styles.iconButtonDanger}`}
+                    onClick={() => void handleDelete(clone.id)}
+                    disabled={removingId !== null}
+                    aria-label={`Delete ${clone.label}`}
+                    title={removingId === clone.id ? "Deleting voice" : "Delete voice"}
+                  >
+                    {removingId === clone.id ? <span className={styles.iconSpinner} aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
                   </button>
                 </div>
               </li>
@@ -514,6 +640,54 @@ export default function VoiceSettingsPage() {
                   Your browser does not support audio preview.
                 </audio>
               )}
+              {file && clipDuration !== null && (
+                <div className={styles.trimPanel}>
+                  <div className={styles.trimHeading}>
+                    <span className={styles.label}>Trim recording</span>
+                    <span className={styles.helper}>
+                      Keep {Math.max(0, trimEnd - trimStart).toFixed(1)}s of {clipDuration.toFixed(1)}s
+                    </span>
+                  </div>
+                  <div className={styles.trimTrack} aria-label="Trim selection">
+                    <label className={styles.trimControl}>
+                      <span className={styles.helper}>Start: {trimStart.toFixed(1)}s</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max={Math.max(0, clipDuration - SAMPLE_MIN_SECONDS)}
+                        step="0.1"
+                        value={trimStart}
+                        aria-label="Trim start time"
+                        onChange={(event) => setTrimStart(Math.min(Number(event.target.value), trimEnd - SAMPLE_MIN_SECONDS))}
+                      />
+                    </label>
+                    <label className={styles.trimControl}>
+                      <span className={styles.helper}>End: {trimEnd.toFixed(1)}s</span>
+                      <input
+                        type="range"
+                        min={Math.min(clipDuration, trimStart + SAMPLE_MIN_SECONDS)}
+                        max={clipDuration}
+                        step="0.1"
+                        value={trimEnd}
+                        aria-label="Trim end time"
+                        onChange={(event) => setTrimEnd(Math.max(Number(event.target.value), trimStart + SAMPLE_MIN_SECONDS))}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => void handleApplyTrim()}
+                    disabled={trimming || trimEnd - trimStart < SAMPLE_MIN_SECONDS || trimEnd - trimStart > TRANSCRIPT_MAX_SECONDS}
+                  >
+                    <Scissors size={15} aria-hidden="true" />
+                    {trimming ? "Trimming…" : "Apply trim"}
+                  </button>
+                  <span className={styles.helper}>
+                    Select {SAMPLE_MIN_SECONDS}–{TRANSCRIPT_MAX_SECONDS} seconds of clean speech. Applying the trim replaces the sample with that section.
+                  </span>
+                </div>
+              )}
               <label className={styles.field}>
                 <span className={styles.label}>Voice name</span>
                 <input className={styles.input} type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. My stream voice" maxLength={80} required />
@@ -521,7 +695,27 @@ export default function VoiceSettingsPage() {
               <label className={styles.field}>
                 <span className={styles.label}>Recording transcript</span>
                 <textarea className={`${styles.input} ${styles.textarea}`} value={refText} onChange={(e) => setRefText(e.target.value)} placeholder="Type the exact words spoken in your recording…" maxLength={600} required />
-                <span className={styles.helper}>This helps the clone sound clear and keeps alert speech fast.</span>
+                <span className={styles.helper}>A correct transcript helps the clone read Khmer, USD, and KHR alerts more clearly and keeps synthesis fast.</span>
+                <select
+                  className={styles.input}
+                  value={transcriptionLanguage}
+                  onChange={(event) => setTranscriptionLanguage(event.target.value as "auto" | "km" | "en")}
+                  aria-label="Recording language for transcript generation"
+                >
+                  <option value="auto">Transcript language: Auto detect</option>
+                  <option value="km">Transcript language: Khmer</option>
+                  <option value="en">Transcript language: English</option>
+                </select>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void handleAutoTranscribe()}
+                  disabled={!file || transcribing || submitting}
+                >
+                  <WandSparkles size={15} aria-hidden="true" />
+                  {transcribing ? "Generating transcript…" : "Generate transcript"}
+                </button>
+                {transcriptNotice && <span className={styles.helper} role="status">{transcriptNotice}</span>}
               </label>
               <label className={styles.consent}>
                 <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} />

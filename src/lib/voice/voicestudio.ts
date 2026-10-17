@@ -167,6 +167,28 @@ export async function createVoiceStudioVoice(
   return voiceId;
 }
 
+/** Transcribes an uploaded reference clip using VoiceStudio's configured ASR. */
+export async function transcribeVoiceStudioAudio(sample: File, language?: string): Promise<string> {
+  const form = new FormData();
+  form.append("file", new Blob([await sample.arrayBuffer()], { type: sample.type }), sample.name || "voice-sample.wav");
+  form.append("model", "whisper-1");
+  form.append("response_format", "json");
+  if (language) form.append("language", language);
+
+  const res = await fetch(`${baseUrl()}/v1/audio/transcriptions`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!res.ok) throw await providerError(res);
+
+  const payload = (await res.json()) as { text?: unknown };
+  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  if (!text) throw new Error("voicestudio_transcription_empty");
+  return text.slice(0, 600);
+}
+
 /**
  * One synthesis at a time per process.
  *

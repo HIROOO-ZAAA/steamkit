@@ -1,4 +1,4 @@
-﻿alter table public.alert_settings add column if not exists donor_avatar text;
+alter table public.alert_settings add column if not exists donor_avatar text;
 alter table public.alert_settings add column if not exists text_delay integer not null default 0;
 
 drop function if exists public.streamkit_resolve_overlay(text);

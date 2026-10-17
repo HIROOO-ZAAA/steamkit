@@ -13,6 +13,33 @@ function json(data: unknown, status = 200) {
   });
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return json({ error: "unauthorized" }, 401);
+
+  const { id } = await params;
+  const body = (await request.json().catch(() => null)) as { label?: unknown } | null;
+  const label = typeof body?.label === "string" ? body.label.trim() : "";
+  if (!label) return json({ error: "Give the voice a name." }, 400);
+  if (label.length > 80) return json({ error: "That name is too long." }, 400);
+
+  const { data, error } = await supabase
+    .from("voice_clones")
+    .update({ label })
+    .eq("id", id)
+    .eq("owner_id", auth.user.id)
+    .select("id, label, voicestudio_voice_id, consent_at, created_at")
+    .maybeSingle();
+
+  if (error) return json({ error: "Could not rename that voice." }, 503);
+  if (!data) return json({ error: "Voice not found." }, 404);
+  return json({ clone: data });
+}
+
 /**
  * Removes a clone row and, when we know its provider id, deletes the voice from
  * VoiceStudio too. Leaving the upstream voice behind would silently consume GPU

@@ -76,6 +76,21 @@ grant execute on function public.streamkit_get_widget_leaderboard(text) to anon,
 -- Hard delete instead of only a timestamp (keeps everything consistent after you clear)
 drop function if exists public.streamkit_widget_clear_history();
 
+-- Hides the widget feed going forward by stamping widget_cleared_at. It does NOT
+-- delete history.
+--
+-- This function originally did `delete from public.tips where creator_id =
+-- v_user` here. Being SECURITY DEFINER and granted to `authenticated`, that let
+-- any signed-in user permanently erase every tip on their creator account --
+-- completed, verified, paid-for tips included -- with one RPC call. The "clear"
+-- that a creator expects hides rows from a widget; it must never destroy the
+-- record of money that moved.
+--
+-- 20261010000008 later replaced this function with the non-destructive version
+-- below, so on a database that had both applied, the destructive one was gone.
+-- Replaying from the start, though, the destructive version was live for the
+-- whole window between these two files. It is written in its final, safe form
+-- here so that window does not exist.
 create or replace function public.streamkit_widget_clear_history()
 returns void
 language plpgsql
@@ -88,9 +103,6 @@ begin
   if v_user is null then
     raise exception 'Not authenticated';
   end if;
-
-  delete from public.tips
-  where creator_id = v_user;
 
   update public.streamkit_overlay_credentials
   set widget_cleared_at = now()

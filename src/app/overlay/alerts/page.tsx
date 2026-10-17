@@ -6,11 +6,13 @@ import type { Tip } from "@/lib/types";
 import styles from "../[token]/overlay.module.css";
 import widgetStyles from "../../dashboard/alerts/alerts.module.css";
 import {
+  ALERT_DURATION_SECONDS,
   applyTier,
   highlightText,
   parseTemplate,
   pickTier,
   splitSpeechText,
+  shouldSpeakAlert,
   speechText,
   type AlertSettings,
   type AlertTier,
@@ -540,12 +542,12 @@ function triggerAlert(
   // voice finishes so consecutive donations are never spoken over each other.
   window.setTimeout(() => {
     setCurrentAlert((current) => current?.id === tip.id ? null : current);
-  }, Math.max(0, effective.duration_seconds) * 1000);
+  }, ALERT_DURATION_SECONDS * 1000);
 
   if (effective.sound_url) playSoundEffect(effective.sound_url);
 
   const finish = () => {
-    if (!effective.tts_enabled) {
+    if (!shouldSpeakAlert(effective.tts_enabled, tip.payment_status === "test")) {
       onSpeechComplete();
       return;
     }
@@ -555,10 +557,9 @@ function triggerAlert(
       .finally(onSpeechComplete);
   };
 
-  // A donor voice message replaces the read-aloud for that alert: speaking the
-  // template while the recording plays would talk over it. The intro is
-  // independent of `tts_enabled` -- a creator can keep lower tiers silent and
-  // still hear the voice messages announced.
+  // Play an uploaded donor recording first, then read the donation template
+  // with the selected clone. This keeps both voice-message and text donations
+  // on the same saved TTS setting, without talking over the recording.
   if (!tip.voice_path) {
     finish();
     return;
@@ -569,7 +570,10 @@ function triggerAlert(
     : Promise.resolve();
   void announce
     .then(() => playVoiceMessage(tip.voice_path!))
-    .finally(onSpeechComplete);
+    .catch((error) => {
+      alertFault(`donor voice playback failed error=${errorNameOf(error) ?? "unknown"}`);
+    })
+    .finally(finish);
 }
 
 export default function AlertsOverlayPage({
