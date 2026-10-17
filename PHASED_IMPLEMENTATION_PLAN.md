@@ -90,8 +90,7 @@ Still open:
    untested against a live project.
 7. **`/dashboard/subathon`, `/dashboard/analytics`, `/dashboard/subscriptions`
    and `/dashboard/chat` have not been re-verified** against the schema they read.
-8. **1 lint error remains** — `require()` in `scripts/kit-client-bridge.mjs`,
-   plus a no-op scratch script `fix_gt.js` at the repo root.
+8. **Lint is clean** — 0 errors, 55 warnings. Resolved 2026-10-14.
 9. **No tests.** Resolved 2026-10-15 — see §5 item 6.
 10. **The "voice clone" feature never cloned anything.** `voice_settings`
     carried `cloning_enabled` / `cloned_voice_id` from the first alert
@@ -124,31 +123,48 @@ overload instead of replacing the old signature.
 
 ## 5. Recommended order for what remains
 
-1. **Apply `20261019000011`** (voice clones) — without it `/dashboard/voice`
-   cannot save a clone and `streamkit_resolve_overlay` returns no engine
-   columns. **Still outstanding.** Audited 2026-10-14: idempotent, and the
-   `drop function` before the recreate is required. `...010` (test-tip voice) is
-   now unused by the UI: the dashboard recorder was removed on 2026-10-14.
-2. **Verify the voice loop end to end** — **API side done 2026-10-16; the OBS
-   browser source itself is still unobserved.** Both synthesis routes have now
-   run against the live VoiceStudio instance: clone resolution, the stock-voice
-   fallback, the tts-cache bucket and the token/ownership gates all confirmed
-   with measurements. Three defects were found and fixed in the process, and both
-   stored clones turned out to be unusable (see `PROJECT_MEMORY.md`). What
-   remains is watching it in a real OBS browser source: nothing has been *seen*
-   or *heard* yet, only exercised over HTTP. The tier side of the loop
-   (`pickTier` / `applyTier`) is covered by tests but not observed live either.
-   Note that a fresh clone is needed first — both existing ones are too long for
-   the engine to clone.
-3. **VoxCPM model load — blocked on this machine.** `torch`/`voxcpm` are not
-   installed and the model was deliberately deferred. `ffmpeg` **is** installed
-   and the conversion path is verified. Before installing here, read the VRAM
-   note in `PROJECT_MEMORY.md`: an RTX 4060 Laptop 8 GB will probably not hold
-   VoxCPM2 at the default fp32 that `voxcpm_server.py` requests.
-4. **Link the Supabase CLI** so migrations stop being copy-pasted. **Blocked:**
+1. **Hear it in OBS.** The loop is verified over HTTP and in a headless
+   browser, and the four defects that made it silent are fixed — but no one has
+   *heard* the alert voice. Everything needed for that test is in
+   `PROJECT_MEMORY.md` under "OBS test setup on this machine": the live source is
+   `Browser 5` in scene `Game`, all five browser sources point at
+   `localhost:3000` so `npm run dev` must be running, and `Browser 2` is the
+   same URL in other scenes and must not be visible at the same time.
+   **Never run `npm run build` while the dev server is up** — it overwrites the
+   dev chunks and the overlay goes silent with no error anywhere.
+2. **Re-upload both clones with a transcript.** `ref_text` is now required. The
+   samples are `~/Downloads/ambatukam.mp3` (10.3s, in range). Do not use
+   `npm run voice:transcribe` output for a Khmer clip — it returned confident,
+   fluent, wrong English. Keep both existing clones until a replacement is
+   confirmed working, and leave `active_clone_id` alone until then.
+3. **The API side is done** — verified 2026-10-16; observed in a real browser
+   2026-10-17, which found four more defects. A Chromium
+   driven over CDP against a production build now exercises the full loop:
+   navigate `/overlay/alerts?token=`, inject a tip through the service client,
+   and read the page's own console. Clone resolution, the stock-voice fallback,
+   the tts-cache bucket and the token/ownership gates are all confirmed with
+   measurements.
+
+   What that session found, all now fixed — see `PROJECT_MEMORY.md` for detail:
+   - a timeout handed the stock-voice fallback a **negative** budget
+     (`TimeoutNegativeWarning: -263`), so a slow clone cost the alert every
+     voice rather than only the cloned one;
+   - **aborting our fetch does not cancel the provider's work**, so timed-out
+     attempts kept the single GPU worker busy and wedged the voice permanently;
+   - a clone with no `ref_text` is transcribed on the GPU during every
+     synthesis — 3.7-6.0s versus 2.9-3.6s, and it fails outright on a busy GPU.
+     Now required at upload;
+   - **`npm run dev` could not hydrate any overlay page at all** (`middleware`
+     matched `/_next/hmr`, plus Next 16's `allowedDevOrigins`), so nothing in
+     the overlay was testable outside a production build.
+
+   **Still not done:** the voice has never been *heard*. See item 1.
+4. **VoxCPM — historical, removed.** The VoxCPM sidecar is gone; voice cloning is
+   VoiceStudio-based. Kept only so the notes are not mistaken for current state.
+5. **Link the Supabase CLI** so migrations stop being copy-pasted. **Blocked:**
    the CLI is not installed and there is no `project-ref`. Needs the user to
    install it and supply the project ref + access token.
-5. **Server-authoritative draws — code complete, unverified (2026-10-16).**
+6. **Server-authoritative draws — code complete, unverified (2026-10-16).**
    Migration `20261015000000_server_authoritative_draws.sql` plus client
    rewiring in `dashboard/raffle`, `dashboard/spin-wheel` and
    `overlay/spin-wheel`. No `Math.random()` remains in any draw path. The raffle

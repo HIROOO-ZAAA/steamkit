@@ -696,7 +696,8 @@ without props; it is only assigned after the config load proves the token valid.
 first call after a restart is ~40s (model load) and must not go through the
 Cloudflare tunnel: the quick tunnel 524s anything over 100s, which is what made
 the missing weights look like an auth failure. **Warm the model against
-`127.0.0.1:3900` directly.**
+`127.0.0.1:3900` directly.** (Re-measured 2026-10-17: 2.9-6.0s warm, not 1.45s
+— see the GPU worker pool section below.)
 
 ## OmniVoice reference audio needs a transcript, and this box has no ASR (2026-10-16)
 `k2-fsa/OmniVoice` auto-transcribes the reference clip, so synthesis failed with
@@ -806,3 +807,331 @@ Both policies added in this migration.
 No `supabase` binary on PATH and no `supabase/.temp/project-ref`. Linking the
 CLI (plan item 4) needs an install plus the user's project ref and access
 token, so it is still blocked on them. Migrations remain copy-paste.
+
+## The alert voice now speaks end to end in a browser (2026-10-17)
+Full loop observed for the first time — a real tip, a real browser, the
+creator's own cloned voice. Read `PROJECT_MEMORY.md` below for the root causes;
+this section is how it was verified and how to verify it again.
+
+**Harness:** Chromium over CDP, headless, no `--autoplay-policy` flag — which
+makes it *stricter* than OBS, so what passes here passes there. Navigate
+`/overlay/alerts?token=…`, inject a tip with the service client, and read the
+page's own `console.warn` lines. The page logs enough to diagnose itself:
+`tip queued` -> `drain` -> `tts request chars=N` -> `tts response status=…` ->
+`playback start <origin+path>` -> `playback=ended|error|timeout`.
+
+**Observed on a clean run:**
+
+```
+tip queued depth=1
+drain depth=1
+tts request chars=115
+tts response status=200 audio=yes
+playback start https://…supabase.co/storage/v1/object/sign/tts-cache/8f8960fc….mp3
+tts …mp3 playback=error error=NotAllowedError
+tts element playback=error; retrying through Web Audio
+```
+
+**Three things this caught that HTTP-only testing never could:**
+
+1. **A suspended `AudioContext` reports success.** The probe recorded
+   `contexts: [{ state: "suspended" }], decode: []` while the page believed it
+   had spoken. `decodeAudioData` resolves and `onended` fires on a suspended
+   context, so *every* success signal is green and the speakers stay silent.
+   Nothing in the app could have detected this. Fixed: prime the context with a
+   one-sample buffer before `resume()` (a muted output keeps it suspended), and
+   log the context state next to every playback outcome.
+2. **`resume()` does not always settle.** With no audio device it never
+   resolves, and the decode happens BEFORE `playViaWebAudio` arms its timeout —
+   so an unbounded await hung the alert queue forever, reintroducing the exact
+   stall `audio-playback.ts` was written to prevent, upstream of it. Now bounded
+   by `AUDIOCONTEXT_RESUME_MS` (1.5s).
+3. **`sound_url` effects hit the same autoplay refusal as the voice** and, unlike
+   the voice, have no Web Audio path — they are just dropped with a log line.
+   Not fixed; the voice is what matters here and OBS normally grants playback.
+
+**Do NOT leave overlay tabs open while testing this.** Each one polls the same
+creator and fires its own synthesis per alert, and the GPU pool has one worker.
+Six forgotten tabs produced `worker pool is saturated (0 running, 1 already
+queued)` that looked exactly like an app bug and was entirely the harness. The
+probe now closes its own tab; `json/close/<id>` for any strays.
+
+## VoiceStudio has ONE GPU worker, and aborting a request does NOT cancel it
+This is why "the voice sometimes stops reading" at all. It was not found by
+reading code; it came out of a real browser alert on 2026-10-17.
+
+The instance serialises synthesis on a single worker pool and says so when it
+refuses:
+
+```
+the local GPU worker pool is saturated (0 running, 1 already queued on
+1 worker(s)). Nothing was started, so this request is safe to retry as-is
+in about 5s. To raise throughput, run fewer concurrent requests, or set
+OMNIVOICE_GPU_WORKERS ...
+```
+
+**The trap: `AbortController.abort()` on our fetch does not stop the work.**
+VoiceStudio keeps synthesising for whoever walked away, and that job holds the
+only worker for its full natural runtime. So a chain of
+
+> clone attempt times out -> we abandon it -> job still running -> fallback is
+> rejected 429 without starting -> fallback times out -> abandoned too -> ...
+
+permanently wedges the voice. Every later alert 504s. **This is the single most
+important thing to know about this deployment.** `OMNIVOICE_GPU_WORKERS` is not
+the fix: a second worker means a second resident model on a 6.9 GB card that
+already holds OmniVoice.
+
+Three changes in `src/app/api/tts/synthesize/route.ts`, all from measurements:
+
+1. **A timeout no longer retries.** `withTimeout` now raises a distinct
+   `TimeoutError`, and the handler returns 504 straight away instead of trying
+   the stock voice. A timed-out attempt means the worker is still busy with our
+   own abandoned job; retrying is what compounded it. One alert loses its
+   voice, the next ones are fine. A *provider error* still retries, because an
+   answered error leaves nothing running.
+2. **No per-attempt reserve.** `FALLBACK_RESERVE_MS` existed only to stop the
+   fallback being handed a negative budget. With the budget floored at
+   `MIN_ATTEMPT_MS` (1.5s) and the retry only reached after a fast failure,
+   the reserve bought nothing and cost the clone 4s it needed. Removed.
+3. **A process-wide single-flight chain** (`onTheProvider`) so two concurrent
+   callers queue at *our* end instead of on the GPU. Best effort — it does not
+   coordinate across serverless instances, which is why (1) still matters.
+
+## The single-flight gate must live in the PROVIDER, not in one route (2026-10-17)
+First placed in `api/tts/synthesize/route.ts`, which was wrong. There are **two**
+callers that synthesise — the overlay route and the dashboard's clone preview
+(`api/voice-clones/[id]/test`) — and a gate only one of them respects is not a
+gate.
+
+The symptom was visible in the dev log while previewing a clone on
+`/dashboard/voice-settings`:
+
+```
+POST /api/voice-clones/70528fa1…/test 200 in 46s
+POST /api/voice-clones/03b06d8d…/test 502 in 91s
+POST /api/voice-clones/70528fa1…/test 200 in 26.7s
+…saturat (0 running, 1 already queued on 1 worker(s))
+```
+
+46s and 91s for a *warm* synthesis, while the overlay was also mid-alert. Both
+routes hit the same one-worker pool with nothing between them.
+
+`onTheProvider()` now lives in `src/lib/voice/voicestudio.ts` and wraps
+`synthesizeVoiceStudioSpeech`, so **every** synthesis funnels through one chain
+regardless of which route asked. **When adding a third caller, do not add a
+second gate — this is the gate.**
+
+Still true: it is per-process and does not coordinate across serverless
+instances, which is why a timeout still must not retry.
+
+## NEVER run `npm run build` while `npm run dev` is serving OBS (2026-10-17)
+This cost a whole diagnosis cycle and it was self-inflicted. **Do not build
+while the dev server is running.**
+
+Next 16 writes both layouts into `.next`: production into `.next/static` and
+`.next/server`, dev into `.next/dev/static`. A production build therefore
+**overwrites the dev server's chunk directory underneath it.** The dev server
+keeps serving happily — it holds chunks in memory — but every
+`/_next/static/chunks/...` it hands out is gone from disk:
+
+```
+status=200   <- HTML is fine
+chunks present=0 missing=22   <- and no JavaScript exists
+```
+
+The page renders server HTML and then does nothing. **No errors, no logs, no
+overlay** — which is indistinguishable from a dead backend. OBS was affected
+exactly this way: it kept logging `Browser 5` at 13:10, then went completely
+silent while every later entry was from `Browser 4`.
+
+**Verify before trusting any "the overlay is dead" conclusion:** fetch the chunks
+the server hands out and check them, rather than looking at the disk:
+
+```powershell
+$r = Invoke-WebRequest "http://127.0.0.1:3000/overlay/alerts?token=$TOKEN" -UseBasicParsing
+[regex]::Matches($r.Content,'/_next/static/[^"'' ]+') | % { $_.Value } | select -Unique |
+  % { try { (Invoke-WebRequest "http://127.0.0.1:3000$_" -UseBasicParsing).StatusCode } catch { "FAILED $_" } }
+```
+
+Check over HTTP, **not** on disk: Turbopack serves dev chunks from memory, so a
+`Test-Path` against `.next\static` reports them missing even on a perfectly
+healthy server. That false negative cost time too.
+
+Recovery is `Stop-Process` the dev server, `Remove-Item .next -Recurse -Force`
+(they are genuinely interleaved), then `npm run dev`. OBS still has to reload
+its source afterwards.
+
+## OBS logs ONLY uncaught errors — every diagnostic here was invisible
+Verified against a live obs-browser 2.26.9 session on 2026-10-17. The log at
+`%APPDATA%/obs-studio/logs/*.txt` contained **seven** uncaught errors from
+`/overlay/alerts` and **zero** `console.warn` lines — including every one of the
+`[alerts] …` diagnostics this feature emits.
+
+So the entire diagnostic surface of the alert voice was invisible in the one
+place a creator will ever look, which is a large part of why "the overlay is
+silent" has been so hard to explain from the outside.
+
+`playbackLog()` now escalates to `console.error` for any outcome other than
+`ended`, and `alertFault()` does the same for the two facts that decide whether
+an alert spoke at all:
+
+- `audio output available=false — nothing this page plays will be audible`
+- `tts synthesis returned no audio; using OS voice`
+- `the clip finished but the audio context never started…`
+
+Routine progress (`tts request chars=`, `poll new=`, `realtime SUBSCRIBED`) stays
+on `console.warn` on purpose: it fires every few seconds and would drown the log.
+**When adding a diagnostic here, ask whether a creator would need it without
+devtools. If yes, it is `alertFault`, not `console.warn`.**
+
+## OBS test setup on this machine (2026-10-17)
+Scene collection `Untitled`; canvas 1920x1080; current program scene **Game**.
+The live alerts overlay is the browser source **`Browser 5`**:
+
+```
+http://localhost:3000/overlay/alerts?token=ef6866a2-35f4-4f61-8e43-f5ccd006b0db
+```
+
+`Browser 2` points at the **same URL** and lives in scenes `start stream` and
+`Scene 2`. Both must not be visible in the same scene — two overlays means two
+syntheses per alert, against a one-worker GPU pool. This is not hypothetical: an
+earlier session mistook exactly that for an application bug.
+
+All five browser sources point at `localhost:3000`, i.e. the **dev** server, so
+`npm run dev` must be running for the overlay to work at all. `obs-browser` is
+2.26.9 on CEF 127.
+
+**Historical, now fixed:** the log shows every overlay being CORS-blocked from
+Supabase between 00:10 and 00:42 (`No 'Access-Control-Allow-Origin' header`).
+Supabase answers all four origins correctly now (verified: localhost, 127.0.0.1,
+:3100 and the production host each get a matching `ACAO`), and no CORS error has
+been logged since 00:42. If it ever returns, check the project's allowed origins
+in Supabase before touching the app.
+
+Also in the log, unrelated to StreamKit's own code but confusing when reading it:
+`Browser 4` spams `Internal Next.js error: Router action dispatched before
+initialization`, and there are `Uncaught TypeError: Cannot read properties of
+null (reading 'appendChild')` plus `SyntaxError: Identifier 'obsCSS' has already
+been declared` entries from OBS's own injected stylesheet.
+
+## `ref_text` is now REQUIRED on a clone (2026-10-17)
+VoiceStudio transcribes the reference clip itself when no transcript is
+supplied. `GET /profiles` shows both stored clones have `"ref_text": ""`, so
+every single synthesis ran Whisper on the GPU next to a resident OmniVoice —
+and that path fails outright on this card:
+
+```
+.../omnivoice.py:1037 in create_voice_clone_prompt
+    ref_text = self.transcribe((ref_wav, self.sampling_rate))
+torch.AcceleratorError: CUDA error: unknown error
+```
+
+Measured side by side, same clip, same line, three runs each:
+
+| clone | synthesis latency |
+|---|---|
+| with `ref_text` | 2.9s / 3.4s / 3.6s |
+| without `ref_text` | 3.7s / 4.8s / 6.0s |
+
+That gap is the difference between finishing inside the alert budget and timing
+out — and a timeout is what orphans the GPU worker. So `ref_text` is now
+required by `POST /api/voice-clones` (400 with an explanation) and by the form,
+instead of being an "optional accuracy" field. A transcript also raises the
+sample cap from 15s to 20s.
+
+**The two existing clones still cannot be repaired** — samples are never stored
+here, only the provider id, and `ref_text` lives upstream. They must be
+re-uploaded. Until then `kdit` works but is slow enough to be marginal.
+
+### `npm run voice:transcribe` exists, but its output is NOT trustworthy here
+`scripts/voice-transcribe.mjs` borrows VoiceStudio's venv (transformers + torch
+already installed) to run the cached `openai/whisper-small` on CPU, so no
+dependency is added and nothing is downloaded. It works — and on the samples in
+`~/Downloads` it produced **confident, fluent, wrong English**:
+
+| file | duration | whisper output |
+|---|---|---|
+| `ambatukam.mp3` | 10.3s | "I'm about to come out!" |
+| `villager-ambatukam.mp3` | 10.3s (same audio) | "I'm about to come out!" |
+| `Ambasing full. Ft dreambull.mp3` | 29.7s | "Yes, Chip. Yes, thank you so much…" |
+
+Two files that are the same audio returned the same sentence, and the 29.7s clip
+returned English text that no one would have said. **These are hallucinations,
+not transcriptions.** The samples appear to be Khmer, and whisper-small on a
+short clip will invent plausible English rather than admit it cannot tell.
+
+So do not paste this output into the transcript field. The creator has to supply
+the words by listening to their own sample. The script is kept because it is
+still the right tool for a clip it *can* handle, and because running it made the
+failure obvious in seconds instead of after an upload.
+
+**The two samples that matter are in `~/Downloads`:** `ambatukam.mp3` (10.3s, in
+range) and `villager-ambatukam.mp3` (the same 10.3s audio). `Ambasing full. Ft
+dreambull.mp3` is 29.7s and must be cut to 3-15s first.
+
+`Ambasing full. Ft dreambull.mp3` is 29.7s and over the engine's 15s limit for a
+clip with no transcript anyway — cut it to 3-15s of clean speech first.
+
+## `ended` is NOT proof that anything was audible (2026-10-17)
+The most dangerous class of bug in this feature, because every signal says it
+worked. Measured in a real browser alert:
+
+```
+tts …mp3 playback=ended            <- the page believes it spoke
+contexts: [{ state: "suspended" }]  <- nothing ever reached the speakers
+```
+
+`HTMLAudioElement` reports `ended` whether or not an output device is attached,
+and a **suspended `AudioContext` decodes the buffer, advances its clock and
+fires `onended` exactly the same way.** So the queue believed it had spoken, no
+alert was blocked, no error was logged, and the stream heard silence.
+
+Three consequences, all now handled in `src/app/overlay/alerts/page.tsx`:
+
+- **`ensureAudioOutputKnown()` probes once, BEFORE any clip plays**, with a
+  one-sample silent buffer, and caches the answer. The ordering is the whole
+  point: probing *afterwards* was tried first and made the alert **audible
+  twice** (`playback=ended` from the element, then the same clip again through
+  Web Audio). Exactly one path may play the clip.
+- **A context that never started is a failure, not a success.** `playAudioUrl`
+  returns false in that case so `speak()` falls through to the OS voice. Silence
+  is not a fallback.
+- **`resume()` does not always settle.** With no audio device it never resolves,
+  and the decode happens *before* `playViaWebAudio` arms its timeout, so an
+  unbounded await hung the queue forever — reintroducing upstream the exact
+  stall `audio-playback.ts` exists to prevent. Bounded by
+  `AUDIOCONTEXT_RESUME_MS`.
+
+**Do not test playback with headless Chrome alone.** It has no audio device, so
+every run reports a suspended context and it is impossible to tell a real
+failure from the environment. Launch with
+`--autoplay-policy=no-user-gesture-required` *and* expect `context=running`;
+`audio output available=true` in the log is the line that means sound is real.
+
+**`sound_url` effects have the same refusal** (`playback=error
+error=NotAllowedError`) and now go through the same Web Audio fallback via
+`playSoundEffect`. Fire-and-forget on purpose: it is not awaited, because a
+sound effect that starts slightly late is unnoticeable whereas awaiting it puts
+a third audio device in front of the spoken message.
+
+## `npm run dev` could not hydrate any overlay page (fixed 2026-10-17)
+Two causes, stacked, both worth knowing:
+
+- `src/middleware.ts` matched `/_next/hmr`. It excluded `_next/static` and
+  `_next/image` but not the websocket upgrade, so the middleware ran
+  `supabase.auth.getUser()` on it and answered with `NextResponse.next()`,
+  which cannot be an upgrade. Chrome: `net::ERR_INVALID_HTTP_RESPONSE`.
+- Next 16 also blocks cross-origin requests to its own dev resources, and the
+  dev server listens on `localhost` while OBS URLs are built from `127.0.0.1`.
+  Fixed with `allowedDevOrigins: ["127.0.0.1", "localhost"]`.
+
+Symptom: **every client overlay page rendered its server HTML and then nothing.**
+No effects, no Supabase request, no console output — which looks exactly like a
+dead backend and is not one. Confirmed by `npm run build && next start`, where
+the same page worked immediately. If an overlay "does nothing" in dev, check
+hydration before touching the API.
+
+Side effects: proxy time on overlay routes fell from ~300ms to ~5ms (the auth
+RPC is no longer on every `_next` request), and `middleware` is deprecated in
+Next 16 — renamed to **`src/proxy.ts`** exporting `proxy()`, same behaviour.
