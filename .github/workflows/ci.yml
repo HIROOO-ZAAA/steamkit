@@ -1,0 +1,81 @@
+name: StreamKit CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default. Nothing here needs write access to the repository, and
+# no step deploys or pushes.
+permissions:
+  contents: read
+
+concurrency:
+  group: streamkit-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-build:
+    name: Verify and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies from the lockfile
+        run: npm ci
+
+      # Static lint over supabase/migrations/*.sql and supabase_schema.sql. It
+      # reads text only. It proves the migration SET is internally consistent --
+      # it does NOT prove the live Supabase schema matches, because nothing here
+      # connects to a database.
+      - name: Verify migration set
+        run: npm run verify:migrations
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Dummy values only. next build compiles routes that read these at module
+      # scope; a missing NEXT_PUBLIC_* can fail prerender. Nothing here reaches a
+      # real service -- these are syntactically valid placeholders, never keys,
+      # and no step connects to Supabase, Bakong, ABA PayWay, Telegram or
+      # VoiceStudio.
+      - name: Build Next.js application
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+          NEXT_PUBLIC_APP_URL: https://placeholder.example
+          VOICESTUDIO_BASE_URL: http://127.0.0.1:1
+          VOICESTUDIO_SHARED_SECRET: placeholder-shared-secret
+          VOICESTUDIO_DEFAULT_VOICE_ID: placeholder-voice-id
+          BAKONG_ACCOUNT_ID: placeholder
+          BAKONG_API_TOKEN: placeholder
+          BAKONG_API_URL: https://placeholder.example
+          BAKONG_MERCHANT_CITY: placeholder
+          BAKONG_MERCHANT_NAME: placeholder
+          ABA_PAYWAY_MERCHANT_ID: placeholder
+          ABA_PAYWAY_API_KEY: placeholder
+          ABA_PAYWAY_SECRET_KEY: placeholder
+          ABA_PAYWAY_API_URL: https://placeholder.example
+          ABA_PAYWAY_CALLBACK_URL: https://placeholder.example/api/payments/webhook
+          ABA_PAYWAY_ENV: sandbox
+          PAYMENT_PROVIDER: bakong
+          PAYMENT_WEBHOOK_SECRET: placeholder
+          TELEGRAM_BOT_TOKEN: placeholder
+          TELEGRAM_BOT_USERNAME: placeholder
+          TELEGRAM_LINK_TOKEN_SECRET: placeholder
+          TELEGRAM_WEBHOOK_SECRET: placeholder
+          ELEVENLABS_API_KEY: placeholder
+        run: npm run build
