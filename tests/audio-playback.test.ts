@@ -70,6 +70,19 @@ afterEach(() => {
 });
 
 describe("playAudioToEnd — normal completion", () => {
+  it("reports browser playback start only after play() starts successfully", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    audio.playRejects = Promise.resolve();
+    let starts = 0;
+    const playback = playAudioToEnd(audio, undefined, undefined, () => starts++);
+
+    await Promise.resolve();
+    assert.equal(starts, 1);
+    audio.emit("ended");
+    assert.equal(await playback, "ended");
+  });
+
   it("resolves ended when the clip finishes", async () => {
     mock.timers.enable({ apis: ["setTimeout"] });
     const audio = new FakeAudio();
@@ -105,6 +118,17 @@ describe("playAudioToEnd — normal completion", () => {
 });
 
 describe("playAudioToEnd — failure paths", () => {
+  it("does not report playback start when the browser rejects play()", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    audio.playRejects = Promise.reject(Object.assign(new Error("blocked"), { name: "NotAllowedError" }));
+    let starts = 0;
+    const playback = playAudioToEnd(audio, undefined, undefined, () => starts++);
+
+    assert.equal(await playback, "error");
+    assert.equal(starts, 0);
+  });
+
   it("resolves error when the element fires error", async () => {
     mock.timers.enable({ apis: ["setTimeout"] });
     const audio = new FakeAudio();

@@ -84,6 +84,15 @@ export function parseTemplate(template: string, tip: TemplateTip): string {
       : tip.amount.toFixed(2))
     .replace(/\{currency\}/g, tip.currency)
     .replace(/\{message\}/g, tip.message ?? "")
+    // Spacing tokens. `{space:N}` MUST be handled before `{space}`, or the
+    // shorter pattern matches first and leaves a literal "N}" on the alert.
+    //
+    // Clamped because the field is creator-supplied text that reaches a regex
+    // replace: an unbounded count would either throw on a non-numeric value or
+    // allocate an arbitrarily large string into the alert's DOM.
+    .replace(/\{space:(\d{1,3})\}/g, (_m, count: string) => " ".repeat(Math.min(100, Number(count))))
+    .replace(/\{space\}/g, " ")
+    .replace(/\{newline\}/g, "\n")
     .replace(/\{avatar\}/g, "");
 }
 
@@ -245,9 +254,13 @@ export function amountForTierTest(
   return Math.min(Math.max(normalizedAmount, targetMinimum), targetMaximum);
 }
 
-/** Test clicks always exercise speech; real donations obey the saved TTS toggle. */
-export function shouldSpeakAlert(ttsEnabled: boolean, isTestAlert: boolean): boolean {
-  return ttsEnabled || isTestAlert;
+/** Tests always speak; real tips speak when enabled or when a clone is selected. */
+export function shouldSpeakAlert(
+  ttsEnabled: boolean,
+  isTestAlert: boolean,
+  hasSelectedClone = false,
+): boolean {
+  return ttsEnabled || isTestAlert || hasSelectedClone;
 }
 
 /**

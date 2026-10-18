@@ -151,8 +151,7 @@ async function startListening({ agentToken, chatId, botUsername }) {
       const message = event.message;
       if (!message?.message) return;
       const sender = await message.getSender();
-      console.log(`[telegram] ${message.message}`);
-      console.log(`[telegram]   sender=${String(sender?.id ?? "?")} chat=${String(message.chatId ?? "")}`);
+      console.log(`[telegram] message received chars=${message.message.length}`);
       if (String(sender?.id) !== senderId) return;
       const parsed = parseAbaMessage(message.message);
       const { data, error } = await supabase.rpc("streamkit_record_parsed_aba_tip", {
@@ -174,7 +173,7 @@ async function startListening({ agentToken, chatId, botUsername }) {
         if (!data.accepted) console.log(`[ingest] skipped (${data.reason ?? "n/a"}) ${message.id}`);
         else if (data.duplicate) console.log(`[ingest] duplicate skipped ${message.id}`);
         else if (parsed)
-          console.log(`[ingest] tip ${data.tip_id} · ${parsed.currency} ${parsed.amount} from ${parsed.donor} · ${message.id}`);
+          console.log(`[ingest] tip recorded message_present=${Boolean(parsed.message)} message_chars=${parsed.message?.length ?? 0}`);
         else console.log(`[ingest] logged, no tip (no amount parsed) ${message.id}`);
       }
     } catch (err) {

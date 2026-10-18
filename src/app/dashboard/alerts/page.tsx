@@ -23,6 +23,7 @@ import {
   Layout,
   Loader2,
   Upload,
+  Info,
 } from "lucide-react";
 
 const KHMER_FONTS = [
@@ -75,10 +76,41 @@ type PreviewSpeechConfig = {
   volume: number;
 };
 
+/**
+ * Escapes a value for use inside a RegExp.
+ *
+ * Needed now that the donor's name comes from a text field rather than a
+ * literal: a name like "Sophea (M)" or "A.B" would otherwise build an invalid
+ * or over-broad pattern and throw inside render, taking the preview down.
+ */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const TEST_AMOUNT_PRESETS: Record<"USD" | "KHR", string[]> = {
   USD: ["$0.01", "$0.50", "$1", "$2", "$10"],
   KHR: ["៛1,000", "៛5,000", "៛10,000", "៛20,000", "៛50,000"],
 };
+
+/**
+ * The tokens the message template accepts, in the order they are offered.
+ *
+ * Every entry here MUST resolve in `parseTemplate`. A token listed in this panel
+ * but not implemented by the parser does not fail loudly -- it renders as the
+ * literal text `{token}` on the live alert, which is how a creator ends up
+ * blaming the OBS overlay for a typo they never made.
+ *
+ * `khmer` is guidance for the creator, never sent anywhere.
+ */
+const TEMPLATE_TOKENS = [
+  { token: "{name}", label: "The recipient's full name", khmer: "ឈ្មោះអ្នកបង់ប្រាក់" },
+  { token: "{amount}", label: "For the transaction amount", khmer: "ប្រាក់ចំនួន" },
+  { token: "{currency}", label: "For the currency code (e.g., $, ៛)", khmer: "ប្រាក់ប្រទាន" },
+  { token: "{message}", label: "The message from ABA", khmer: "សារយើងពី ABA" },
+  { token: "{newline}", label: "Add a line break in the text", khmer: "បន្ទាត់ថ្មី" },
+  { token: "{space}", label: "Add a space", khmer: "ចន្លោះ" },
+  { token: "{space:X}", label: "Add X spaces (e.g. {space:10})", khmer: "បន្លោះ X ដង" },
+] as const;
 
 /** Raw `alert_settings` row as it comes back from the table. */
 type RawAlertSettings = {
@@ -141,14 +173,22 @@ export default function AlertSettingsPage() {
   const [selectedAmount, setSelectedAmount] = useState("$2");
   const [scope, setScope] = useState<"selected" | "all">("selected");
   const [designMode, setDesignMode] = useState(false);
+  const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [customTestMessage, setCustomTestMessage] = useState("អរគុណសម្រាប់ការលាយស្ទ្រីមដ៏ល្អ!");
+  // The donor name a TEST alert is sent under. It lives beside the message so a
+  // creator can rehearse the exact wording they will hear, instead of every test
+  // announcing "John" because that string was hardcoded in the preview and in
+  // the request body.
+  const [customTestDonorName, setCustomTestDonorName] = useState("John");
   const [testSending, setTestSending] = useState(false);
   const [toast, setToast] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
   const [testPreview, setTestPreview] = useState<{
     amount: number;
     currency: "USD" | "KHR";
+    name: string;
     message: string;
     template: string;
   } | null>(null);
@@ -479,7 +519,7 @@ export default function AlertSettingsPage() {
     const testTemplate = savedTest?.template ?? template;
     const volume = (savedTest?.volume ?? ttsVolume) / 100;
     const text = speechText(testTemplate, {
-      tipper_name: "John",
+      tipper_name: testDonorName,
       amount: amountNumber,
       currency: testCurrency,
       message: testMessage,
@@ -601,7 +641,7 @@ export default function AlertSettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "John",
+          name: testDonorName,
           amount,
           currency,
           message: testMessage,
@@ -615,6 +655,7 @@ export default function AlertSettingsPage() {
       setTestPreview({
         amount,
         currency,
+        name: testDonorName,
         message: testMessage,
         template: savedTestSettings?.message_template || template,
       });
@@ -821,6 +862,39 @@ export default function AlertSettingsPage() {
 
   const hasAvatarTag = template.includes("{avatar}");
 
+  /** The name used everywhere a test alert is previewed or sent. */
+  const testDonorName = customTestDonorName.trim() || "Anonymous";
+
+  /**
+   * Appends a token to the template.
+   *
+   * Appended rather than inserted at the caret: the token list is opened from a
+   * button in the label row, where the caret is in a different element entirely,
+   * so there is no reliable caret position to insert at.
+   */
+  const appendToken = (token: string) => {
+    setTemplate((current) => `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`);
+    setTokenPanelOpen(false);
+  };
+
+  /**
+   * Copies a token for pasting into the OBS scene notes or elsewhere.
+   *
+   * Failure is silent and non-fatal: `navigator.clipboard` is unavailable on an
+   * insecure origin, which is exactly the plain-HTTP case this project runs in.
+   * The token is always one click away in the panel, so a refused copy must not
+   * raise an error the creator has to dismiss.
+   */
+  const copyToken = (token: string) => {
+    void navigator.clipboard?.writeText(token).then(
+      () => {
+        setCopiedToken(token);
+        window.setTimeout(() => setCopiedToken(null), 1200);
+      },
+      () => {},
+    );
+  };
+
   const highlightNameAndAmount = (text: string) => {
     const displayAmount = isTesting && testPreview
       ? testPreview.currency === "KHR"
@@ -829,9 +903,10 @@ export default function AlertSettingsPage() {
       : selectedAmount;
     const escapedAmount = displayAmount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const displayCurrency = isTesting && testPreview ? testPreview.currency : currency;
-    const re = new RegExp(`(John|${escapedAmount}\\s*${displayCurrency})`, "g");
+    // The donor's name is matched from whatever is in the field, not a literal.
+    const re = new RegExp(`(${escapeRegExp(testDonorName)}|${escapedAmount}\\s*${displayCurrency})`, "g");
     return text.split(re).map((seg, i) =>
-      seg === "John" || seg.startsWith(displayAmount) ? (
+      seg === testDonorName || seg.startsWith(displayAmount) ? (
         <span key={i} style={{ color: highlightColor, fontWeight: 800 }}>{seg}</span>
       ) : (
         <React.Fragment key={i}>{seg}</React.Fragment>
@@ -850,7 +925,7 @@ export default function AlertSettingsPage() {
     const avatarParts = previewTemplate.split("{avatar}");
     return avatarParts.map((part, idx) => {
       const parsed = part
-        .replaceAll("{name}", "John")
+        .replaceAll("{name}", isTesting && testPreview ? testPreview.name : testDonorName)
         .replaceAll("{amount}", displayAmount)
         .replaceAll("{currency}", displayCurrency)
         .replaceAll("{message}", isTesting && testPreview ? testPreview.message : customTestMessage);
@@ -1083,6 +1158,32 @@ export default function AlertSettingsPage() {
                 </div>
               </div>
 
+              {/* Donor name + message, next to the buttons they affect.
+                  Kept in the action bar rather than in a separate card below so
+                  the words being tested sit in the same row as TEST, which is
+                  what the preview is going to show and speak. */}
+              <div className={styles.actionGroup}>
+                <span className={styles.actionLabel}>DONOR:</span>
+                <input
+                  type="text"
+                  className={styles.actionInput}
+                  value={customTestDonorName}
+                  placeholder="Donor name"
+                  aria-label="Test donor name"
+                  maxLength={60}
+                  onChange={(e) => setCustomTestDonorName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  className={styles.actionInput}
+                  value={customTestMessage}
+                  placeholder="Donor message"
+                  aria-label="Test donor message"
+                  maxLength={300}
+                  onChange={(e) => setCustomTestMessage(e.target.value)}
+                />
+              </div>
+
               {/* Radio Scope Toggle */}
               <div className={styles.actionGroup}>
                 <span className={styles.actionLabel}>SCOPE:</span>
@@ -1136,22 +1237,9 @@ export default function AlertSettingsPage() {
             </div>
 
             <p className={styles.hintText} style={{ marginTop: "12px" }}>
-              TEST sends the alert to the OBS browser source using saved settings. Save changes first. PREVIEW shows the animation here without speech.
+              Previews will only show here. To view events in your streaming software, save your settings
+              then click the &quot;Test&quot; button above.
             </p>
-          </div>
-
-          {/* Custom Test Message Input Box */}
-          <div className={styles.card} style={{ marginTop: "20px" }}>
-            <div className={styles.cardHeader}>
-              <span><Type size={16} /> CUSTOM TEST DONOR MESSAGE</span>
-            </div>
-            <textarea
-              rows={2}
-              className={styles.textarea}
-              placeholder="Write anything here to test how donor messages render on screen..."
-              value={customTestMessage}
-              onChange={(e) => setCustomTestMessage(e.target.value)}
-            />
           </div>
         </div>
 
@@ -1435,8 +1523,62 @@ export default function AlertSettingsPage() {
                 </label>
               </div>
               <div className={styles.controlGroup}>
-                <label className={styles.label}>TTS Message Template</label>
+                <div className={styles.tokenLabelRow}>
+                  <label className={styles.label} htmlFor="tts-template-input">TTS Message Template</label>
+                  <Info size={13} className={styles.tokenInfoIcon} aria-hidden />
+                  <button
+                    type="button"
+                    className={styles.tokenPickerButton}
+                    aria-expanded={tokenPanelOpen}
+                    onClick={() => setTokenPanelOpen((open) => !open)}
+                  >
+                    Select token
+                  </button>
+                </div>
+
+                {tokenPanelOpen && (
+                  <div className={styles.tokenPanel} role="group" aria-label="Available tokens">
+                    <div className={styles.tokenPanelHeader}>Available Tokens</div>
+                    {TEMPLATE_TOKENS.map(({ token, label, khmer }) => (
+                      <button
+                        key={token}
+                        type="button"
+                        className={styles.tokenRow}
+                        onClick={() => appendToken(token)}
+                        title={`Add ${token} to the template`}
+                      >
+                        <span className={styles.tokenText}>
+                          <code className={styles.tokenName}>{token}</code>
+                          <span className={styles.tokenLabel}>{label}</span>
+                          <span className={styles.tokenKhmer}>{khmer}</span>
+                        </span>
+                        <span
+                          className={styles.tokenCopy}
+                          role="button"
+                          tabIndex={0}
+                          title={`Copy ${token}`}
+                          aria-label={`Copy ${token}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            copyToken(token);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              copyToken(token);
+                            }
+                          }}
+                        >
+                          {copiedToken === token ? <Check size={13} /> : <Copy size={13} />}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <textarea
+                  id="tts-template-input"
                   rows={3}
                   className={styles.textarea}
                   value={template}
@@ -1444,13 +1586,14 @@ export default function AlertSettingsPage() {
                   placeholder="{name} donated {amount} {currency}: {message}"
                 />
                 <p className={styles.hintText}>
-                  Use &#123;name&#125;, &#123;amount&#125;, &#123;currency&#125;, and &#123;message&#125;. This is also the alert&apos;s on-screen message template.
+                  Click a token above to add it. This is also the alert&apos;s on-screen message template, so
+                  &#123;newline&#125; and &#123;space&#125; affect what viewers see as well as what they hear.
                 </p>
                 <div className={styles.previewFormattedBox}>
                   <span className={styles.label}>PREVIEW</span>
-                  <p>
+                  <p style={{ whiteSpace: "pre-line" }}>
                     {parseTemplate(template, {
-                      tipper_name: "John",
+                      tipper_name: testDonorName,
                       amount: Number(selectedAmount.replace(/[^0-9.]/g, "")) || (currency === "KHR" ? 1000 : 10),
                       currency,
                       message: customTestMessage || "This is a test alert message.",

@@ -313,6 +313,130 @@
 .ttsGrid .controlGroup { margin-bottom: 10px; }
 .ttsGrid .select:disabled { opacity: .8; cursor: default; }
 
+/* ---- TTS template token picker ---- */
+.tokenLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tokenLabelRow .label { margin-bottom: 0; }
+
+.tokenInfoIcon { color: var(--accent, #a78bfa); flex: none; }
+
+.tokenPickerButton {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #4b3a72;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tokenPickerButton:hover { background: #ddd6fe; }
+
+.tokenPanel {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 8px;
+  /* The panel is positioned in normal flow, so it can never be clipped by an
+     ancestor's overflow even when the sidebar scrolls. */
+  position: relative;
+  z-index: 5;
+}
+
+.tokenPanelHeader {
+  padding: 8px 12px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #1e293b;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tokenRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+}
+
+.tokenRow:last-child { border-bottom: none; }
+.tokenRow:hover { background: #f8fafc; }
+
+.tokenText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tokenName {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7c3aed;
+}
+
+.tokenLabel {
+  font-size: 11px;
+  color: #475569;
+}
+
+.tokenKhmer {
+  font-size: 11px;
+  /* Khmer needs a font that actually has the glyphs, or the label renders as
+     tofu boxes next to every token. */
+  font-family: 'Noto Sans Khmer', 'Khmer OS', sans-serif;
+  color: #dc2626;
+}
+
+.tokenCopy {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.tokenCopy:hover { background: #e2e8f0; color: #0f172a; }
+
+/* Donor name / message inputs in the preview action bar. */
+.actionInput {
+  width: 130px;
+  padding: 5px 9px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.actionInput:focus {
+  outline: none;
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3);
+}
+
 .label {
   font-family: 'Rajdhani', sans-serif;
   font-size: 14px;

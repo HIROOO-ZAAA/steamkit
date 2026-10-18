@@ -77,6 +77,30 @@ describe("parseTemplate", () => {
     assert.equal(out, "Sophea sent 5.00USD: great stream");
   });
 
+  // The token picker offers these three, so they have to actually resolve.
+  // Before this they rendered as the literal text "{newline}" on the alert.
+  it("expands the spacing tokens the token picker offers", () => {
+    assert.equal(parseTemplate("a{space}b", tip()), "a b");
+    assert.equal(parseTemplate("a{space:5}b", tip()), "a     b");
+    assert.equal(parseTemplate("a{newline}b", tip()), "a\nb");
+    assert.equal(parseTemplate("{space:0}", tip()), "");
+  });
+
+  it("resolves {space:N} before {space}, so no literal N} is left behind", () => {
+    // The ordering bug this guards: matching {space} first would turn
+    // "{space:5}" into " 5}" and leave a stray brace on the stream.
+    const out = parseTemplate("{space:5}", tip());
+    assert.equal(out, "     ");
+    assert.doesNotMatch(out, /[{}]/);
+  });
+
+  it("caps {space:N} so a creator cannot inject an unbounded string", () => {
+    assert.ok(parseTemplate("{space:9999}", tip()).length <= 100);
+    // Non-numeric is left alone rather than being silently dropped, so a typo
+    // is visible instead of invisible.
+    assert.equal(parseTemplate("{space:abc}", tip()), "{space:abc}");
+  });
+
   it("renders USD to exactly two decimals", () => {
     assert.equal(parseTemplate("{amount}", tip({ amount: 5 })), "5.00");
     assert.equal(parseTemplate("{amount}", tip({ amount: 5.5 })), "5.50");
@@ -313,10 +337,11 @@ describe("alert test speech policy", () => {
     assert.equal(ALERT_DURATION_SECONDS, 2);
   });
 
-  it("always reads a test alert while real donations obey the saved toggle", () => {
+  it("always reads tests and honors an explicitly selected clone for real donations", () => {
     assert.equal(shouldSpeakAlert(false, true), true);
     assert.equal(shouldSpeakAlert(true, false), true);
     assert.equal(shouldSpeakAlert(false, false), false);
+    assert.equal(shouldSpeakAlert(false, false, true), true);
   });
 });
 

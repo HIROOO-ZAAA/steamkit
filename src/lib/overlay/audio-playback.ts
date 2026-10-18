@@ -99,6 +99,7 @@ export async function playViaWebAudio(
   url: string,
   decoder: AudioDecoder,
   timeoutMs: number = PLAYBACK_TIMEOUT_MS,
+  onStarted?: () => void,
 ): Promise<PlaybackOutcome> {
   let decoded: DecodedAudio;
   try {
@@ -115,6 +116,11 @@ export async function playViaWebAudio(
     if (!voice) {
       resolve("error");
       return;
+    }
+    try {
+      onStarted?.();
+    } catch {
+      // A diagnostic callback must not affect playback.
     }
 
     const timer = setTimeout(() => {
@@ -173,6 +179,7 @@ export function playAudioToEnd(
   audio: PlayableAudio,
   timeoutMs: number = PLAYBACK_TIMEOUT_MS,
   onDiagnostic?: (diagnostic: PlaybackDiagnostic) => void,
+  onStarted?: () => void,
 ): Promise<PlaybackOutcome> {
   return new Promise((resolve) => {
     let settled = false;
@@ -231,6 +238,13 @@ export function playAudioToEnd(
     });
 
     let started: Promise<void> | void;
+    const notifyStarted = () => {
+      try {
+        onStarted?.();
+      } catch {
+        // A diagnostic callback must not affect playback.
+      }
+    };
     try {
       started = audio.play();
     } catch (error) {
@@ -242,10 +256,15 @@ export function playAudioToEnd(
     if (started && typeof (started as Promise<void>).then === "function") {
       // Resolution of play() only means playback *started*; the element decides
       // when it ends. Rejection means it will never start.
-      (started as Promise<void>).then(undefined, (error: unknown) => {
-        failureName = errorNameOf(error);
-        settle("error");
-      });
+      (started as Promise<void>).then(
+        notifyStarted,
+        (error: unknown) => {
+          failureName = errorNameOf(error);
+          settle("error");
+        },
+      );
+    } else {
+      notifyStarted();
     }
   });
 }

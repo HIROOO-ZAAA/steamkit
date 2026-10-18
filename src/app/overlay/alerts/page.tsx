@@ -24,6 +24,10 @@ import {
   playViaWebAudio,
   type AudioDecoder,
 } from "@/lib/overlay/audio-playback";
+import { createOverlaySynthesisRequest } from "@/lib/overlay/tts-request";
+import { createOverlayAlertClaimRequest } from "@/lib/overlay/alert-claim-request";
+import { ALERT_TTS_BROWSER_TIMEOUT_MS } from "@/lib/voice/tts-timeouts";
+import { canUseBrowserVoiceFallback } from "@/lib/overlay/speech-policy";
 
 type VoiceSettings = {
   language: string;
@@ -32,6 +36,7 @@ type VoiceSettings = {
   provider?: string | null;
   voice_id?: string | null;
   cloning_enabled?: boolean;
+  active_clone_id?: string | null;
 };
 
 type OverlayConfig = AlertSettings & VoiceSettings & {
@@ -43,23 +48,6 @@ type OverlayConfig = AlertSettings & VoiceSettings & {
 
 const PHOTO_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-photos`;
 const VOICE_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-voice`;
-
-/**
- * How long past its configured duration an alert may be held open waiting for
- * its voice.
- *
- * An alert is now cleared only once the speech has finished AND its duration has
- * elapsed, because clearing on duration alone meant a real donation's alert
- * vanished ~6s before the voice arrived. That needs a ceiling: `speak()` always
- * resolves in theory, and an overlay pinned open by one stuck synthesis would
- * silently stop showing every later donation.
- *
- * Comfortably above the synthesis deadline. SYNTHESIS_TIMEOUT_MS is 12s and
- * ALERT_PLAYBACK_BUDGET_MS is 15s, so anything past that is already abnormal --
- * 30s is far enough not to fire in normal operation and near enough that a
- * failure is bounded.
- */
-const SPEECH_HOLD_CAP_S = 30;
 
 /**
  * `speechSynthesis.getVoices()` is populated asynchronously -- Chromium returns
@@ -115,8 +103,8 @@ function resolveVoice(voice: VoiceSettings): SpeechSynthesisVoice | null {
  * synthesis error, must not strand the alert queue waiting on a callback that
  * never fires.
  */
-function speakWithBrowser(text: string, voice: VoiceSettings, volume = 1): Promise<void> {
-  if (!("speechSynthesis" in window)) return Promise.resolve();
+function speakWithBrowser(text: string, voice: VoiceSettings, volume = 1): Promise<boolean> {
+  if (!("speechSynthesis" in window)) return Promise.resolve(false);
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, ""));
     const picked = resolveVoice(voice);
@@ -125,36 +113,14 @@ function speakWithBrowser(text: string, voice: VoiceSettings, volume = 1): Promi
     utterance.pitch = voice.pitch;
     utterance.rate = voice.speed;
     utterance.volume = Math.max(0, Math.min(1, volume));
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
+    utterance.onend = () => resolve(true);
+    utterance.onerror = () => resolve(false);
     window.speechSynthesis.speak(utterance);
   });
 }
 
-/**
- * The overlay token, held at module level for the same reason `cachedVoices` is:
- * this page serves exactly one creator, and `speak()` is a module function that
- * the alert queue calls without threading props through. Assigned once the
- * config load proves the token is valid — an unverified token would only earn a
- * 401 from the synthesis route.
- */
-let synthesisToken: string | null = null;
-
 /** How long to wait for the synthesis route before using the OS voice anyway. */
-const SYNTHESIS_TIMEOUT_MS = 12_000;
-
-/**
- * How long one alert may hold the queue while its audio is produced.
- *
- * The alert itself is on screen for `duration_seconds` (~7s), so a synthesis
- * that has not produced a URL by now has already outlived its own alert. Above
- * this the alert stops *waiting* on the audio — it still plays if it arrives,
- * but the queue moves on, because the failure being guarded against is a
- * head-of-line block: every later donation silent behind one stuck alert.
- *
- * Only a diagnosis aid for now; the queue is still serial and still waits.
- */
-const ALERT_PLAYBACK_BUDGET_MS = 15_000;
+const SYNTHESIS_TIMEOUT_MS = ALERT_TTS_BROWSER_TIMEOUT_MS;
 
 /**
  * Asks /api/tts/synthesize to speak `text` in the creator's own voice, and
@@ -165,33 +131,42 @@ const ALERT_PLAYBACK_BUDGET_MS = 15_000;
  * audio. The route falls back to the stock voice on its own failures, so the
  * overlay only has to decide between "the creator's voice" and "the OS voice".
  */
-async function synthesizeWithCreatorVoice(text: string): Promise<string | null> {
-  if (!synthesisToken) {
+type SynthesizedSpeech = { url: string; usedClone: boolean; fellBack: boolean };
+
+async function synthesizeWithCreatorVoice(
+  text: string,
+  overlayToken: string | null | undefined,
+  donationId?: string,
+  requireClone = false,
+): Promise<SynthesizedSpeech | null> {
+  const request = createOverlaySynthesisRequest(overlayToken, text, donationId, requireClone);
+  if (!request) {
+    console.error(
+      `[alerts] payment_id=${donationId ?? "unattributed"} ` +
+        "stage=synthesis_dispatch result=skipped reason=overlay_token_missing",
+    );
     alertFault("tts skipped because the overlay token is not ready");
     return null;
   }
+  console.error(
+    `[alerts] payment_id=${donationId ?? "unattributed"} stage=synthesis_dispatch ` +
+      `result=started text_chars=${text.length}`,
+  );
   console.warn(`[alerts] tts request chars=${text.length}`);
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), SYNTHESIS_TIMEOUT_MS);
-  // An alert is on screen for a few seconds. If synthesis has not produced a URL
-  // by then, waiting longer only delays the next alert while the on-screen one
-  // has already outlived its own duration — so playback may still finish and
-  // still be worth hearing, but the alert must not hold the queue open for it.
-  const queueDeadline = Date.now() + ALERT_PLAYBACK_BUDGET_MS;
-  let abandoned = false;
-  const queueTimer = window.setTimeout(() => {
-    abandoned = true;
-  }, ALERT_PLAYBACK_BUDGET_MS);
   try {
     const res = await fetch("/api/tts/synthesize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ overlayToken: synthesisToken, text }),
+      ...request,
       signal: controller.signal,
     });
     if (!res.ok) {
       const failure = (await res.json().catch(() => null)) as { error?: string } | null;
+      console.error(
+        `[alerts] payment_id=${donationId ?? "unattributed"} stage=synthesis_response ` +
+          `result=failed status=${res.status} error=${failure?.error?.slice(0, 80) ?? "unknown"}`,
+      );
       alertFault(
         `tts synthesis failed status=${res.status}` +
           (failure?.error ? ` error=${failure.error.slice(0, 160)}` : ""),
@@ -201,31 +176,44 @@ async function synthesizeWithCreatorVoice(text: string): Promise<string | null> 
     const payload = (await res.json().catch(() => null)) as {
       audioUrl?: string;
       voiceId?: string;
+      usedClone?: boolean;
       fellBack?: boolean;
     } | null;
     const url = typeof payload?.audioUrl === "string" ? payload.audioUrl : null;
     if (!url) {
+      console.error(
+        `[alerts] payment_id=${donationId ?? "unattributed"} ` +
+          "stage=synthesis_response result=failed reason=audio_url_missing",
+      );
       alertFault("tts response succeeded without an audio URL");
       return null;
     }
-    console.error(
-      `[alerts] tts audio ready voiceId=${payload?.voiceId ?? "unknown"} ` +
-        `fallback=${payload?.fellBack === true}`,
-    );
-    if (url && abandoned) {
-      console.warn(
-        `[alerts] tts arrived ${Date.now() - queueDeadline}ms after the alert ` +
-          "budget expired; playing, but the next alert will not wait for it",
+    if (requireClone && payload?.usedClone !== true) {
+      console.error(
+        `[alerts] payment_id=${donationId ?? "unattributed"} stage=synthesis_response ` +
+          "result=failed reason=selected_clone_not_used",
       );
+      return null;
     }
     console.warn(`[alerts] tts response status=${res.status} audio=yes`);
-    return url;
+    console.error(
+      `[alerts] payment_id=${donationId ?? "unattributed"} stage=synthesis_response ` +
+        `result=audio clone=${payload?.usedClone === true} fallback=${payload?.fellBack === true}`,
+    );
+    return {
+      url,
+      usedClone: payload?.usedClone === true,
+      fellBack: payload?.fellBack === true,
+    };
   } catch (error) {
+    console.error(
+      `[alerts] payment_id=${donationId ?? "unattributed"} stage=synthesis_response ` +
+        `result=failed error=${errorNameOf(error) ?? "unknown"}`,
+    );
     alertFault(`tts request failed before a response error=${errorNameOf(error) ?? "unknown"}`);
     return null;
   } finally {
     window.clearTimeout(timer);
-    window.clearTimeout(queueTimer);
   }
 }
 
@@ -443,9 +431,14 @@ function webAudioDecoder(volume = 1): AudioDecoder {
  * from the element, then the same clip again through Web Audio. Probing never
  * means the page reports success while the stream hears nothing.
  */
-async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
+async function playAudioUrl(
+  url: string,
+  volume = 1,
+  donationId?: string,
+): Promise<boolean> {
   const where = audioLocation(url);
-  console.warn(`[alerts] playback start ${where}`);
+  const context = donationId ? ` payment_id=${donationId}` : "";
+  console.error(`[alerts]${context} playback=attempting location=${where}`);
 
   const audible = await ensureAudioOutputKnown();
 
@@ -453,9 +446,15 @@ async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
   // is the only path that can make sound in a browser source with no user
   // gesture — and the only one whose success can be verified.
   if (!audible) {
-    const outcome = await playViaWebAudio(url, webAudioDecoder(volume), PLAYBACK_TIMEOUT_MS);
+    const outcome = await playViaWebAudio(
+      url,
+      webAudioDecoder(volume),
+      PLAYBACK_TIMEOUT_MS,
+      () => console.error(`[alerts]${context} playback=started transport=webaudio`),
+    );
     console.warn(
-      `[alerts] tts-webaudio ${where} playback=${outcome} context=${audioContext?.state ?? "none"}`,
+      `[alerts]${context} tts-webaudio ${where} playback=${outcome} ` +
+        `context=${audioContext?.state ?? "none"}`,
     );
     // `ended` on a context that never started is a clock advancing in silence.
     if (outcome === "ended" && audioContext?.state !== "running") {
@@ -471,8 +470,11 @@ async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
 
   const audio = new Audio(url);
   audio.volume = Math.max(0, Math.min(1, volume));
-  const outcome = await playAudioToEnd(audio, PLAYBACK_TIMEOUT_MS, (d) =>
-    playbackLog(`tts ${where}`, d.outcome, d.errorName),
+  const outcome = await playAudioToEnd(
+    audio,
+    PLAYBACK_TIMEOUT_MS,
+    (d) => playbackLog(`${context} tts ${where}`, d.outcome, d.errorName),
+    () => console.error(`[alerts]${context} playback=started transport=audio_element`),
   );
   if (outcome === "ended") {
     spokenVerdict("element", audible);
@@ -483,8 +485,13 @@ async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
   // connection. Web Audio fetches and decodes independently, so this is a real
   // second chance rather than a repeat.
   console.warn(`[alerts] tts element playback=${outcome}; retrying through Web Audio`);
-  const fallback = await playViaWebAudio(url, webAudioDecoder(volume), PLAYBACK_TIMEOUT_MS);
-  playbackLog(`tts-webaudio ${where}`, fallback);
+  const fallback = await playViaWebAudio(
+    url,
+    webAudioDecoder(volume),
+    PLAYBACK_TIMEOUT_MS,
+    () => console.error(`[alerts]${context} playback=started transport=webaudio_retry`),
+  );
+  playbackLog(`${context} tts-webaudio ${where}`, fallback);
   if (fallback === "ended") spokenVerdict("webaudio-after-element", audible);
   return fallback === "ended";
 }
@@ -497,18 +504,76 @@ async function playAudioUrl(url: string, volume = 1): Promise<boolean> {
  * no route, refused request, dead audio element, no OS voice — has to land back
  * on `speakWithBrowser` rather than strand the queue.
  */
-async function speak(text: string, voice: VoiceSettings, volume = 1): Promise<void> {
+type SpeechSummary = {
+  chunks: number;
+  synthesizedChunks: number;
+  cloneChunks: number;
+  fallbackChunks: number;
+  playback: "ended" | "partial" | "failed" | "empty";
+};
+
+async function speak(
+  text: string,
+  voice: VoiceSettings,
+  overlayToken: string | null | undefined,
+  volume = 1,
+  donationId?: string,
+  requireClone = false,
+): Promise<SpeechSummary> {
   const line = text.replace(/<[^>]+>/g, "");
-  for (const chunk of splitSpeechText(line)) {
-    const audioUrl = await synthesizeWithCreatorVoice(chunk);
-    if (!audioUrl) {
-      await speakWithBrowser(chunk, voice, volume);
+  const chunks = splitSpeechText(line);
+  let cloneChunks = 0;
+  let fallbackChunks = 0;
+  let successfulChunks = 0;
+  let synthesizedChunks = 0;
+  for (const chunk of chunks) {
+    const synthesized = await synthesizeWithCreatorVoice(
+      chunk,
+      overlayToken,
+      donationId,
+      requireClone,
+    );
+    if (!synthesized) {
+      if (canUseBrowserVoiceFallback(requireClone)) {
+        fallbackChunks += 1;
+        if (await speakWithBrowser(chunk, voice, volume)) successfulChunks += 1;
+      } else {
+        break;
+      }
       continue;
     }
-    if (await playAudioUrl(audioUrl, volume)) continue;
-    alertFault("tts playback did not run to the end; using OS voice");
-    await speakWithBrowser(chunk, voice, volume);
+    synthesizedChunks += 1;
+    if (synthesized.usedClone) cloneChunks += 1;
+    if (synthesized.fellBack) fallbackChunks += 1;
+    if (await playAudioUrl(synthesized.url, volume, donationId)) {
+      successfulChunks += 1;
+      continue;
+    }
+    alertFault(
+      requireClone
+        ? "selected clone audio playback did not finish"
+        : "tts playback did not run to the end; using OS voice",
+    );
+    if (canUseBrowserVoiceFallback(requireClone)) {
+      fallbackChunks += 1;
+      if (await speakWithBrowser(chunk, voice, volume)) successfulChunks += 1;
+    } else {
+      break;
+    }
   }
+  return {
+    chunks: chunks.length,
+    synthesizedChunks,
+    cloneChunks,
+    fallbackChunks,
+    playback: chunks.length === 0
+      ? "empty"
+      : successfulChunks === chunks.length
+        ? "ended"
+        : successfulChunks > 0
+          ? "partial"
+          : "failed",
+  };
 }
 
 /**
@@ -551,62 +616,85 @@ function triggerAlert(
   onSpeechComplete: () => void,
   tiers: AlertTier[] = [],
   intro: { enabled: boolean; template: string } = { enabled: false, template: "" },
+  overlayToken: string | null | undefined,
+  authoritativeCloneSelected?: boolean,
+  authoritativeTtsEnabled?: boolean,
 ) {
   const tier = pickTier(tiers, tip);
   const effective = applyTier(settings, tier);
+  const hasSelectedClone = authoritativeCloneSelected ??
+    (voice.cloning_enabled === true && Boolean(voice.active_clone_id));
   setCurrentAlert(tip);
 
-  // The alert stays until the voice has finished AND the configured duration has
-  // passed -- whichever is later.
-  //
-  // Duration alone was wrong, and measurably so. This creator has
-  // duration_seconds = 2, while a fresh synthesis on this machine measures
-  // 6.8-7.7s. Clearing at 2s meant every real donation's alert vanished about
-  // six seconds before its voice arrived, so the overlay appeared not to read at
-  // all. A TEST sounded fine only because its text was already in the tts-cache
-  // and came back in 1.3s, inside the 2s window -- which made the feature look
-  // broken for real money and working for the button.
-  //
-  // Duration is still a floor, so a long silent alert is still possible by
-  // choice, and SPEECH_HOLD_CAP_MS stops a synthesis that never settles from
-  // pinning the overlay open forever.
-  let speechSettled = false;
-  let durationElapsed = false;
-  let cleared = false;
-  const clearWhenReady = () => {
-    if (cleared || !speechSettled || !durationElapsed) return;
-    cleared = true;
-    setCurrentAlert((current) => (current?.id === tip.id ? null : current));
-  };
+  // Visual duration and speech duration are independent. A cold clone may
+  // take much longer than the alert's on-screen interval.
   window.setTimeout(() => {
-    durationElapsed = true;
-    clearWhenReady();
+    setCurrentAlert((current) => (current?.id === tip.id ? null : current));
   }, Math.max(0, effective.duration_seconds ?? ALERT_DURATION_SECONDS) * 1000);
-  window.setTimeout(() => {
-    cleared = true;
-    setCurrentAlert((current) => (current?.id === tip.id ? null : current));
-  }, (Math.max(0, effective.duration_seconds ?? ALERT_DURATION_SECONDS) + SPEECH_HOLD_CAP_S) * 1000);
   const onSpeechDone = () => {
-    speechSettled = true;
-    clearWhenReady();
     onSpeechComplete();
   };
 
   if (effective.sound_url) playSoundEffect(effective.sound_url);
 
   const finish = () => {
-    // Selecting a clone is an explicit request for donation speech. Keep that
-    // opt-in effective for real payments too; TEST already speaks regardless
-    // of the tier toggle, which otherwise made tests work while paid alerts
-    // stayed silent on a tier with a stale false value.
-    const ttsEnabled = effective.tts_enabled || voice.cloning_enabled === true;
-    if (!shouldSpeakAlert(ttsEnabled, tip.payment_status === "test")) {
+    // A selected clone is an explicit request for donation speech. Honor that
+    // for real payments even when a stale tier toggle says off; TEST always
+    // speaks regardless of the toggle.
+    const ttsEnabled = authoritativeTtsEnabled ?? effective.tts_enabled;
+    const templateSource = tier?.message_template ? "tier" : "base";
+    const messageChars = (tip.message ?? "").length;
+    const donorPresent = Boolean(tip.tipper_name?.trim());
+    const amountValid = Number.isFinite(Number(tip.amount)) && Number(tip.amount) >= 0;
+    console.error(
+      `[alerts] payment_id=${tip.id} stage=speech_preflight status=${tip.payment_status} ` +
+        `payment_method=${tip.payment_method} donor_present=${donorPresent} ` +
+        `amount_valid=${amountValid} currency=${tip.currency} ` +
+        `template_source=${templateSource} template_chars=${(effective.message_template ?? "").length} ` +
+        `message_present=${messageChars > 0} message_chars=${messageChars} ` +
+        `tts_enabled=${ttsEnabled} clone_enabled=${voice.cloning_enabled === true} ` +
+        `selected_clone=${hasSelectedClone}`,
+    );
+    if (!shouldSpeakAlert(ttsEnabled, tip.payment_status === "test", hasSelectedClone)) {
+      console.error(
+        `[alerts] payment_id=${tip.id} stage=speech_decision tts_enabled=false clone_selected=false ` +
+          "synthesized_chunks=0 fallback=none playback=skipped",
+      );
       onSpeechDone();
       return;
     }
     const tpl = effective.message_template ??
       "Thank you {name} for {amount} {currency}!";
-    void speak(speechText(tpl, tip), voice, (effective.tts_volume ?? 100) / 100)
+    const text = speechText(tpl, tip);
+    console.error(
+      `[alerts] payment_id=${tip.id} stage=speech_built chars=${text.length} ` +
+        `chunks=${splitSpeechText(text).length} message_appended=${messageChars > 0}`,
+    );
+    void speak(
+      text,
+      voice,
+      overlayToken,
+      (effective.tts_volume ?? 100) / 100,
+      tip.id,
+      hasSelectedClone,
+    )
+      .then((summary) => {
+        console.error(
+          `[alerts] payment_id=${tip.id} tts_enabled=true ` +
+            `clone_selected=${hasSelectedClone} ` +
+            `clone_chunks=${summary.cloneChunks} ` +
+            `speech_chunks=${summary.chunks} synthesized_chunks=${summary.synthesizedChunks} ` +
+            `fallback_chunks=${summary.fallbackChunks} ` +
+            `playback=${summary.playback}`,
+        );
+      })
+      .catch((error) => {
+        console.error(
+          `[alerts] payment_id=${tip.id} tts_enabled=true clone_selected=${hasSelectedClone} ` +
+            `speech_chunks=unknown synthesized_chunks=unknown fallback=unknown playback=error ` +
+            `error=${errorNameOf(error) ?? "unknown"}`,
+        );
+      })
       .finally(onSpeechDone);
   };
 
@@ -619,7 +707,14 @@ function triggerAlert(
   }
 
   const announce = intro.enabled
-    ? speak(parseTemplate(intro.template || "{name} sent a voice message", tip), voice)
+    ? speak(
+        parseTemplate(intro.template || "{name} sent a voice message", tip),
+        voice,
+        overlayToken,
+        1,
+        tip.id,
+        hasSelectedClone,
+      )
     : Promise.resolve();
   void announce
     .then(() => playVoiceMessage(tip.voice_path!))
@@ -639,7 +734,7 @@ export default function AlertsOverlayPage({
 
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
-  const [voice, setVoice] = useState<VoiceSettings>({ language: "km-KH", pitch: 1, speed: 1 });
+  const [, setVoice] = useState<VoiceSettings>({ language: "km-KH", pitch: 1, speed: 1 });
   const [currentAlert, setCurrentAlert] = useState<Tip | null>(null);
   const [isProcessingAlert, setIsProcessingAlert] = useState(false);
   const [queue, setQueue] = useState<Tip[]>([]);
@@ -676,7 +771,10 @@ export default function AlertsOverlayPage({
     if (seenRef.current.has(tip.id)) {
       // The startup poll may have marked a just-arrived payment as historical
       // before its realtime callback runs. Let that callback enqueue it once.
-      if (!receivedLive || !baselineSeenRef.current.delete(tip.id)) return;
+      if (!receivedLive || !baselineSeenRef.current.delete(tip.id)) {
+        console.error(`[alerts] payment_id=${tip.id} event=duplicate_skipped`);
+        return;
+      }
     }
     // A live payment event can carry the bank bot's original Telegram
     // timestamp, which may be older than this overlay session. It is still a
@@ -687,7 +785,10 @@ export default function AlertsOverlayPage({
     setQueue((q) => [...q, tip]);
     // Count only: the tip carries the donor's name and message, neither of which
     // may reach a log.
-    console.warn(`[alerts] tip queued depth=${queueDepthRef.current + 1}`);
+    console.error(
+      `[alerts] payment_id=${tip.id} event=queued status=${tip.payment_status} ` +
+        `depth=${queueDepthRef.current + 1}`,
+    );
   }
 
   // Play queued alerts one at a time
@@ -708,19 +809,61 @@ export default function AlertsOverlayPage({
       // concludes the template was not saved. One RPC call removes the race,
       // and makes a real donation speak with whatever is set right now rather
       // than with a snapshot up to four seconds old.
-      await refreshConfigRef.current?.();
+      const configRefreshed = await refreshConfigRef.current?.();
+      if (!configRefreshed) {
+        console.error(`[alerts] payment_id=${next.id} stage=settings_refresh result=failed`);
+        setIsProcessingAlert(false);
+        return;
+      }
       // applyConfig updates settingsRef, so re-read it rather than reuse `s`.
-      triggerAlert(
-        next,
-        settingsRef.current ?? s,
-        voiceRef.current,
-        setCurrentAlert,
-        () => setIsProcessingAlert(false),
-        tiersRef.current,
-        introRef.current,
-      );
+      const claimRequest = createOverlayAlertClaimRequest(token, next.id);
+      if (!claimRequest) {
+        console.error(`[alerts] payment_id=${next.id} stage=event_claim result=failed reason=missing_token`);
+        setIsProcessingAlert(false);
+        return;
+      }
+      try {
+        const claimResponse = await fetch("/api/overlay/claim-alert", claimRequest);
+        const claim = (await claimResponse.json().catch(() => null)) as {
+          claimed?: boolean;
+          cloneSelected?: boolean;
+          ttsEnabled?: boolean;
+          error?: string;
+        } | null;
+        if (!claimResponse.ok || !claim) {
+          console.error(
+            `[alerts] payment_id=${next.id} stage=event_claim result=failed ` +
+              `status=${claimResponse.status} reason=${claim?.error?.slice(0, 60) ?? "invalid_response"}`,
+          );
+          setIsProcessingAlert(false);
+          return;
+        }
+        if (!claim.claimed) {
+          console.warn(`[alerts] payment_id=${next.id} event=duplicate_claim_skipped`);
+          setIsProcessingAlert(false);
+          return;
+        }
+        triggerAlert(
+          next,
+          settingsRef.current ?? s,
+          voiceRef.current,
+          setCurrentAlert,
+          () => setIsProcessingAlert(false),
+          tiersRef.current,
+          introRef.current,
+          token,
+          claim.cloneSelected === true,
+          claim.ttsEnabled === true,
+        );
+      } catch (error) {
+        console.error(
+          `[alerts] payment_id=${next.id} stage=event_claim result=failed ` +
+            `error=${errorNameOf(error) ?? "unknown"}`,
+        );
+        setIsProcessingAlert(false);
+      }
     })();
-  }, [queue, currentAlert, isProcessingAlert]);
+  }, [queue, currentAlert, isProcessingAlert, token]);
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -791,6 +934,7 @@ export default function AlertsOverlayPage({
             provider: cfg.provider,
             voice_id: cfg.voice_id,
             cloning_enabled: cfg.cloning_enabled,
+            active_clone_id: cfg.active_clone_id,
           };
 
           tiersRef.current = Array.isArray(cfg.tiers) ? cfg.tiers : [];
@@ -804,9 +948,6 @@ export default function AlertsOverlayPage({
           setVoice(v);
           settingsRef.current = settings;
           voiceRef.current = v;
-          // Only now is the token known good: an invalid one must not reach the
-          // synthesis route on every alert.
-          synthesisToken = token ?? null;
         }
 
         async function refreshOverlayConfig(): Promise<boolean> {
@@ -1079,6 +1220,10 @@ export default function AlertsOverlayPage({
                 fontFamily: font_family,
                 fontSize: `${Math.max(16, font_size * 0.6)}px`,
                 fontWeight: font_weight,
+                // `pre-line` so a creator's {newline} actually breaks the line.
+                // Without it the newline collapses to a space and the token looks
+                // broken on screen while working correctly in the spoken text.
+                whiteSpace: "pre-line",
               }}
               dangerouslySetInnerHTML={{
                 __html: highlightText(

@@ -42,42 +42,22 @@ import {
   sanitizeAlertText,
 } from "@/lib/voice/voicestudio";
 import crypto from "node:crypto";
+import {
+  ALERT_TTS_GENERATION_TIMEOUT_MS,
+  ttsGenerationFailureStatus,
+} from "@/lib/voice/tts-timeouts";
+import { selectedCloneId } from "@/lib/voice/clone-selection";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const DEFAULT_VOICE_ID = process.env.VOICESTUDIO_DEFAULT_VOICE_ID ?? "default";
 /**
- * An alert is on screen for ~7s. Synthesis slower than this is worse than no
- * synthesis, so we bail to the stock voice rather than stall the queue.
- * Self-hosted inference can be slower than a managed API.
- *
- * This is the budget for the WHOLE request, not per attempt: the caller's client
- * aborts at SYNTHESIS_TIMEOUT_MS (12s in the overlay), so two attempts sharing
- * it is the whole design. FALLBACK_RESERVE_MS below is what makes the split
- * survivable.
+ * The provider's observed cold start is around 40 seconds. Leave 55 seconds
+ * for synthesis and five seconds for request validation, storage, and signing.
+ * The route maxDuration advertises the complete 60-second runtime budget.
  */
-const GENERATE_TIMEOUT_MS = 10_000;
-
-/**
- * Floor on a single attempt.
- *
- * A negative budget is the bug this replaced: Node's `setTimeout` treats one
- * as "fire immediately", so the request was aborted before it was ever sent
- * and the caller was told the provider had failed. Measured on a real browser
- * alert: `TimeoutNegativeWarning: -263 is a negative number`, then
- * `[tts] fallback synthesis also failed: tts_timeout` — the stock-voice retry
- * was aborted before it left the process, so a slow clone cost the alert every
- * voice instead of only the cloned one.
- *
- * There is deliberately NO per-attempt reserve any more. The clone gets the
- * whole remaining budget because the fallback it used to be protecting is now
- * only reached after a FAST provider failure, which leaves time by itself. The
- * measurements justify spending it: a clone WITH a reference transcript takes
- * 2.9-3.6s, one WITHOUT takes 3.7-6.0s because the engine transcribes the
- * reference clip on the GPU during every synthesis. Six seconds was the
- * difference between finishing and timing out.
- */
-const MIN_ATTEMPT_MS = 1_500;
+const GENERATE_TIMEOUT_MS = ALERT_TTS_GENERATION_TIMEOUT_MS;
 
 const CACHE_BUCKET = "tts-cache";
 
@@ -88,8 +68,8 @@ function cacheKeyFor(voiceId: string, text: string): string {
 /**
  * Runs `fn` with a deadline, aborting the underlying fetch when it expires.
  *
- * A bare Promise.race would only stop us *waiting*: the VoiceStudio request
- * would keep running on the GPU after we had already moved on to the fallback.
+ * A bare Promise.race would only stop us waiting; the provider fetch must also
+ * receive the abort signal.
  */
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
   const controller = new AbortController();
@@ -120,23 +100,21 @@ class TimeoutError extends Error {
 /**
  * One synthesis attempt, bounded by `budgetMs`.
  *
- * The budget is floored at MIN_ATTEMPT_MS rather than passed through. A
- * negative value is the bug this replaced: `setTimeout` treats it as "fire
- * immediately", so the request was aborted before it was ever sent and the
- * caller was told the provider failed.
- *
+ * The remaining deadline budget is passed through without extension.
  * The budget covers the queue wait as well as the synthesis: requests serialise
  * inside `synthesizeVoiceStudioSpeech` because the provider has a single GPU
- * worker. The deadline is ours, not the provider's.
+ * worker. The deadline is ours, not the provider's, and is never extended when
+ * nearly exhausted.
  */
 async function attemptSynthesis(
   voiceId: string,
   text: string,
   budgetMs: number,
 ): Promise<ArrayBuffer> {
+  if (budgetMs <= 0) throw new TimeoutError();
   return withTimeout(
     (signal) => synthesizeVoiceStudioSpeech(voiceId, text, signal),
-    Math.max(budgetMs, MIN_ATTEMPT_MS),
+    budgetMs,
   );
 }
 
@@ -162,7 +140,12 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const overlayToken = body?.overlayToken;
   const rawText = body?.text;
-  const voiceCloneId = body?.voiceCloneId;
+  const rawDonationId = body?.donationId;
+  const requireClone = body?.requireClone === true;
+  const donationId = typeof rawDonationId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawDonationId)
+    ? rawDonationId
+    : "unattributed";
 
   // `donationId` is accepted for call-site correlation but intentionally not
   // required: it is never read, and making it mandatory would reject a valid
@@ -175,7 +158,11 @@ export async function POST(req: Request) {
   }
 
   const text = sanitizeAlertText(rawText);
+  console.error(
+    `[tts] payment_id=${donationId} stage=request_received text_chars=${text.length}`,
+  );
   if (!text) {
+    console.error(`[tts] payment_id=${donationId} stage=request_rejected reason=empty_text`);
     return NextResponse.json({ error: "empty text after sanitization" }, { status: 400 });
   }
 
@@ -191,6 +178,10 @@ export async function POST(req: Request) {
   // tell a bad token from a missing one.
   const overlay = Array.isArray(resolved) ? resolved[0] : resolved;
   if (resolveError || !overlay?.creator_id) {
+    console.error(
+      `[tts] payment_id=${donationId} stage=overlay_resolution result=failed ` +
+        `error=${resolveError?.code ?? "invalid_token"}`,
+    );
     return NextResponse.json({ error: "invalid overlay token" }, { status: 401 });
   }
 
@@ -202,31 +193,32 @@ export async function POST(req: Request) {
   //
   // The overlay names no voice: the creator's own voice settings decide.
   //
-  // A clone they picked in voice settings is exactly what they asked for, so it
-  // wins - but only once cloning is switched on, so that leaving the toggle on
-  // with nothing selected cannot silently change an alert's voice. It is still
-  // checked for ownership and recorded consent, exactly like the automatic
-  // choice below.
-  //
-  // With cloning off this falls back to the newest clone that has both a
-  // provider id and recorded consent. Both conditions are required — consent_at
-  // says the sample was cleared, the id says the provider handed one back, and
-  // a row missing either is silently unusable rather than an error the creator
-  // can act on. An explicit voiceCloneId still wins, and is still
-  // ownership-checked below.
+  // The saved selection is authoritative. Never substitute another clone
+  // when the selected one is missing or unusable.
   let voiceId = DEFAULT_VOICE_ID;
 
-  const { data: voicePrefs } = await supabase
+  const { data: voicePrefs, error: voicePrefsError } = await supabase
     .from("voice_settings")
     .select("cloning_enabled, active_clone_id")
     .eq("user_id", creatorId)
     .maybeSingle();
 
-  if (voicePrefs?.cloning_enabled && voicePrefs.active_clone_id) {
-    const { data: chosen } = await supabase
+  console.error(
+    `[tts] payment_id=${donationId} stage=voice_settings enabled=${voicePrefs?.cloning_enabled === true} ` +
+      `clone_selected=${Boolean(selectedCloneId(voicePrefs))} ` +
+      `settings_error=${voicePrefsError?.code ?? "none"}`,
+  );
+
+  if (voicePrefsError) {
+    return NextResponse.json({ error: "could not load saved voice settings" }, { status: 503 });
+  }
+
+  const configuredCloneId = selectedCloneId(voicePrefs);
+  if (configuredCloneId) {
+    const { data: chosen, error: chosenError } = await supabase
       .from("voice_clones")
       .select("voicestudio_voice_id")
-      .eq("id", voicePrefs.active_clone_id)
+      .eq("id", configuredCloneId)
       .eq("owner_id", creatorId)
       .not("consent_at", "is", null)
       .not("voicestudio_voice_id", "is", null)
@@ -235,53 +227,22 @@ export async function POST(req: Request) {
     if (chosen?.voicestudio_voice_id) {
       voiceId = chosen.voicestudio_voice_id;
     }
-  }
-
-  if (voiceId === DEFAULT_VOICE_ID) {
-    const { data: autoVoice } = await supabase
-      .from("voice_clones")
-      .select("voicestudio_voice_id")
-      .eq("owner_id", creatorId)
-      .not("consent_at", "is", null)
-      .not("voicestudio_voice_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (autoVoice?.voicestudio_voice_id) {
-      voiceId = autoVoice.voicestudio_voice_id;
+    console.error(
+      `[tts] payment_id=${donationId} stage=selected_clone_resolution ` +
+        `result=${chosen?.voicestudio_voice_id ? "resolved" : "unresolved"} ` +
+        `error=${chosenError?.code ?? "none"}`,
+    );
+    if (chosenError) {
+      return NextResponse.json({ error: "could not resolve selected voice clone" }, { status: 503 });
+    }
+    if (!chosen?.voicestudio_voice_id) {
+      return NextResponse.json({ error: "selected voice clone is not ready" }, { status: 409 });
     }
   }
 
-  if (voiceCloneId) {
-    const { data: clone, error: cloneError } = await supabase
-      .from("voice_clones")
-      .select("id, voicestudio_voice_id, consent_at")
-      .eq("id", voiceCloneId)
-      .eq("owner_id", creatorId)
-      .maybeSingle();
-
-    if (cloneError) {
-      return NextResponse.json({ error: "could not read that voice" }, { status: 500 });
-    }
-    if (!clone) {
-      return NextResponse.json({ error: "voice clone not found" }, { status: 404 });
-    }
-    if (!clone.consent_at) {
-      return NextResponse.json(
-        { error: "voice clone has no recorded consent" },
-        { status: 403 },
-      );
-    }
-    // consent_at says the sample was cleared; it does not guarantee the
-    // provider handed back an id. Fall back instead of synthesising with null.
-    if (!clone.voicestudio_voice_id) {
-      return NextResponse.json(
-        { error: "voice clone has no provider voice id" },
-        { status: 409 },
-      );
-    }
-    voiceId = clone.voicestudio_voice_id;
+  if (requireClone && !configuredCloneId) {
+    console.error(`[tts] payment_id=${donationId} stage=selected_clone_resolution result=missing`);
+    return NextResponse.json({ error: "no selected voice clone is enabled" }, { status: 409 });
   }
 
   /**
@@ -303,80 +264,62 @@ export async function POST(req: Request) {
 
   const cached = await lookup(voiceId);
   if (cached) {
-    return NextResponse.json({ audioUrl: cached, cached: true, voiceId, fellBack: false });
+    console.error(
+      `[tts] payment_id=${donationId} stage=audio_cache result=hit ` +
+        `voice=${voiceId === DEFAULT_VOICE_ID ? "default" : "clone"}`,
+    );
+    return NextResponse.json({
+      audioUrl: cached,
+      cached: true,
+      voiceId,
+      usedClone: voiceId !== DEFAULT_VOICE_ID,
+      fellBack: false,
+    });
   }
 
   const deadline = Date.now() + GENERATE_TIMEOUT_MS;
   const remaining = () => deadline - Date.now();
   let audioBuffer: ArrayBuffer;
-  let fellBack = false;
+  const fellBack = false;
 
   const isClone = voiceId !== DEFAULT_VOICE_ID;
+  console.error(
+    `[tts] payment_id=${donationId} stage=provider_request result=started ` +
+      `voice=${isClone ? "clone" : "default"} text_chars=${text.length}`,
+  );
 
   try {
     audioBuffer = await attemptSynthesis(voiceId, text, remaining());
+    console.error(
+      `[tts] payment_id=${donationId} stage=provider_result result=audio ` +
+        `bytes=${audioBuffer.byteLength} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
+    );
   } catch (error) {
-    // The overlay falls back to the OS voice on any failure, so a refused
-    // request would otherwise be invisible: every alert quietly stops being the
-    // creator's cloned voice with nothing in the logs but a bare status.
+    const providerStatus = error instanceof VoiceStudioError ? error.status : "none";
+    console.error(
+      `[tts] payment_id=${donationId} stage=provider_result result=failed ` +
+        `error=${error instanceof Error ? error.name : "unknown"} ` +
+        `status=${providerStatus} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
+    );
     if (error instanceof VoiceStudioError && error.refused) {
-      console.error(
-        "[tts] VoiceStudio refused the request — the API key or base URL is wrong:",
-        error,
-      );
+      console.error("[tts] VoiceStudio refused the synthesis request (auth/host configuration)");
     }
-    console.error(`[tts] synthesis failed for voice ${voiceId}:`, error);
+    console.error(
+      `[tts] synthesis failed error=${error instanceof Error ? error.name : "unknown"} ` +
+        `status=${error instanceof VoiceStudioError ? error.status : "none"}`,
+    );
 
-    // Only fall back when a clone was what failed. Retrying the stock voice
-    // after the stock voice already failed just doubles the latency.
-    if (!isClone) {
-      return NextResponse.json({ error: "tts generation failed" }, { status: 502 });
-    }
-
-    // A timeout means we stopped listening but VoiceStudio did not stop
-    // working: that request still holds the single GPU worker. Retrying now
-    // would be rejected with `worker pool is saturated`, and the retry's own
-    // abandonment would queue yet another job behind it — so one slow alert
-    // would permanently wedge the voice for every later one. Give the worker
-    // back instead, and let the overlay use the OS voice for this alert only.
     if (error instanceof TimeoutError) {
-      console.error(
-        "[tts] gave up on a slow request; not retrying, the provider is still " +
-          "synthesising it and holds the only GPU worker",
+      console.error("[tts] generation deadline reached; no voice fallback was attempted");
+      return NextResponse.json(
+        { error: "tts generation timed out" },
+        { status: ttsGenerationFailureStatus(true) },
       );
-      return NextResponse.json({ error: "tts generation timed out" }, { status: 504 });
     }
-
-    // Everything else is the provider ANSWERING — a 500 from the reference
-    // transcription, a 429, a bad payload. Nothing is left running on the GPU,
-    // so the stock voice is worth a try and has the rest of the budget.
-    //
-    // From here on the STOCK voice is what speaks. Reassigning `voiceId` is
-    // load-bearing, not cosmetic: it decides both the cache key the audio is
-    // written under and the id reported back. Leaving it pointing at the clone
-    // stored the stock voice's audio under the clone's key, so the very next
-    // alert with the same words was served that stock audio from the cache and
-    // the clone was never tried again.
-    voiceId = DEFAULT_VOICE_ID;
-    fellBack = true;
-
-    // The stock voice may already have this line from a previous fallback.
-    const cachedFallback = await lookup(voiceId);
-    if (cachedFallback) {
-      return NextResponse.json({
-        audioUrl: cachedFallback,
-        cached: true,
-        voiceId,
-        fellBack,
-      });
-    }
-
-    try {
-      audioBuffer = await attemptSynthesis(voiceId, text, remaining());
-    } catch (fallbackError) {
-      console.error("[tts] fallback synthesis also failed:", fallbackError);
-      return NextResponse.json({ error: "tts generation failed" }, { status: 502 });
-    }
+    return NextResponse.json(
+      { error: "tts generation failed" },
+      { status: ttsGenerationFailureStatus(false) },
+    );
   }
 
   if (!looksLikeAudio(audioBuffer)) {
@@ -409,5 +352,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "failed to sign audio" }, { status: 500 });
   }
 
-  return NextResponse.json({ audioUrl: signed.signedUrl, cached: false, voiceId, fellBack });
+  return NextResponse.json({
+    audioUrl: signed.signedUrl,
+    cached: false,
+    voiceId,
+    usedClone: voiceId !== DEFAULT_VOICE_ID,
+    fellBack,
+  });
 }
