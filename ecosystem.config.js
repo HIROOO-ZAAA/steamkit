@@ -5,6 +5,7 @@
       script: 'C:\\Program Files\\nodejs\\node.exe',
       args: 'scripts/kit-client-bridge.mjs',
       cwd: 'D:\\pong steam\\streamkit',
+      windows_hide: true,
       env: {
         NODE_ENV: 'production'
       }
@@ -14,6 +15,7 @@
       script: 'C:\\Program Files\\nodejs\\node.exe',
       args: 'node_modules/next/dist/bin/next dev',
       cwd: 'D:\\pong steam\\streamkit',
+      windows_hide: true,
       env: {
         NODE_ENV: 'development'
       }
@@ -30,9 +32,25 @@
       script: 'C:\\Program Files\\nodejs\\node.exe',
       args: 'D:\\VoiceStudio\\scripts\\dev-backend.mjs',
       cwd: 'D:\\VoiceStudio',
+      windows_hide: true,
       env: {
         PATH: 'D:\\VoiceStudio\\.venv\\Scripts;C:\\Program Files\\Common Files\\Oracle\\Java\\javapath;C:\\Python314\\Scripts\\;C:\\Python314\\;C:\\Python310\\Scripts\\;C:\\Python310\\;C:\\Program Files (x86)\\Common Files\\Oracle\\Java\\javapath;C:\\Program Files (x86)\\Common Files\\Intel\\Shared Libraries\\redist\\intel64\\compiler;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\Git\\cmd;C:\\Program Files\\nodejs\\;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet\\;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\Cloudflare\\Cloudflare WARP\\;C:\\Program Files (x86)\\cloudflared\\;C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python310\\Scripts\\;C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python310\\;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\msys64\\mingw64\\bin;C:\\Program Files (x86)\\Nmap;C:\\flutter_windows_3.35.5-stable\\flutter\\bin;C:\\Users\\User\\AppData\\Roaming\\npm;C:\\Users\\User\\AppData\\Local\\Programs\\Antigravity\\bin;C:\\Users\\User\\AppData\\Local\\Programs\\Antigravity IDE\\bin;C:\\Program Files\\CMake\\bin;C:\\msys64\\mingw64\\bin;C:\\Users\\User\\.dotnet\\tools;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Links;'
       }
+    },
+    {
+      // Cloudflare tunnel publishing VoiceStudio, so a deployed StreamKit can
+      // reach the local TTS engine. interpreter 'none' because this is a
+      // standalone binary, not a node script.
+      //
+      // This is a QUICK tunnel: it gets a new random *.trycloudflare.com name on
+      // every restart, so nothing that pins the old hostname survives a reboot.
+      // A named tunnel with a real domain is what makes the deployed URL stable.
+      name: 'cloudflared',
+      script: 'D:\\cloudflared.exe',
+      args: 'tunnel --url http://127.0.0.1:3900',
+      interpreter: 'none',
+      windows_hide: true,
+      autorestart: true
     }
   ]
 }
