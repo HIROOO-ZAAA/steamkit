@@ -47,6 +47,7 @@ import {
   ttsGenerationFailureStatus,
 } from "@/lib/voice/tts-timeouts";
 import { selectedCloneId } from "@/lib/voice/clone-selection";
+import { recordTtsObservation } from "@/lib/voice/tts-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -177,10 +178,22 @@ export async function POST(req: Request) {
   // token matched nothing. Both must land on the same 401 so a caller cannot
   // tell a bad token from a missing one.
   const overlay = Array.isArray(resolved) ? resolved[0] : resolved;
-  if (resolveError || !overlay?.creator_id) {
+  // A resolve ERROR is a service problem (most often the missing
+  // `grant execute ... to service_role` on streamkit_resolve_overlay), which is
+  // a 503. Only a clean resolve that matched no row is a bad token, which is a
+  // 401. Collapsing both into 401 previously reported a privilege problem as a
+  // creator error.
+  if (resolveError) {
     console.error(
       `[tts] payment_id=${donationId} stage=overlay_resolution result=failed ` +
-        `error=${resolveError?.code ?? "invalid_token"}`,
+        `code=${resolveError.code ?? "unknown"} ` +
+        `message=${String(resolveError.message ?? "").slice(0, 160)}`,
+    );
+    return NextResponse.json({ error: "speech service unavailable" }, { status: 503 });
+  }
+  if (!overlay?.creator_id) {
+    console.error(
+      `[tts] payment_id=${donationId} stage=overlay_resolution result=failed error=invalid_token`,
     );
     return NextResponse.json({ error: "invalid overlay token" }, { status: 401 });
   }
@@ -264,6 +277,7 @@ export async function POST(req: Request) {
 
   const cached = await lookup(voiceId);
   if (cached) {
+    recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio" });
     console.error(
       `[tts] payment_id=${donationId} stage=audio_cache result=hit ` +
         `voice=${voiceId === DEFAULT_VOICE_ID ? "default" : "clone"}`,
@@ -287,15 +301,23 @@ export async function POST(req: Request) {
     `[tts] payment_id=${donationId} stage=provider_request result=started ` +
       `voice=${isClone ? "clone" : "default"} text_chars=${text.length}`,
   );
+  recordTtsObservation(creatorId, { stage: "started", result: "started" });
 
   try {
     audioBuffer = await attemptSynthesis(voiceId, text, remaining());
+    recordTtsObservation(creatorId, { stage: "provider_audio", result: "audio" });
     console.error(
       `[tts] payment_id=${donationId} stage=provider_result result=audio ` +
         `bytes=${audioBuffer.byteLength} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
     );
   } catch (error) {
     const providerStatus = error instanceof VoiceStudioError ? error.status : "none";
+    recordTtsObservation(creatorId, {
+      stage: "failed",
+      result: "failed",
+      ...(typeof providerStatus === "number" ? { providerStatus } : {}),
+      failureKind: error instanceof TimeoutError ? "timeout" : "provider",
+    });
     console.error(
       `[tts] payment_id=${donationId} stage=provider_result result=failed ` +
         `error=${error instanceof Error ? error.name : "unknown"} ` +
@@ -323,6 +345,7 @@ export async function POST(req: Request) {
   }
 
   if (!looksLikeAudio(audioBuffer)) {
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "invalid_audio" });
     return NextResponse.json(
       { error: "tts provider returned unexpected payload" },
       { status: 502 },
@@ -341,6 +364,7 @@ export async function POST(req: Request) {
     });
 
   if (uploadError) {
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "storage" });
     return NextResponse.json({ error: "failed to cache audio" }, { status: 500 });
   }
 
@@ -349,9 +373,11 @@ export async function POST(req: Request) {
     .createSignedUrl(cachePath, 60 * 10);
 
   if (!signed?.signedUrl) {
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "storage" });
     return NextResponse.json({ error: "failed to sign audio" }, { status: 500 });
   }
 
+  recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio" });
   return NextResponse.json({
     audioUrl: signed.signedUrl,
     cached: false,

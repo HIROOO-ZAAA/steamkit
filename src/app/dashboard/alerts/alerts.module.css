@@ -341,12 +341,16 @@
 
 .tokenPickerButton:hover { background: #ddd6fe; }
 
+/* Token picker. Rebuilt as chips: a white vertical list inside the dark card
+   looked pasted on, and one row per token pushed the textarea off screen. The
+   purple is the accent for "this is a template token" and is now carried by the
+   chip itself rather than only the token's text. */
 .tokenPanel {
-  border: 1px solid #cbd5e1;
+  border: 1px solid #1E3350;
   border-radius: 8px;
-  background: #fff;
+  background: #0B1526;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   /* The panel is positioned in normal flow, so it can never be clipped by an
      ancestor's overflow even when the sidebar scrolls. */
   position: relative;
@@ -354,87 +358,136 @@
 }
 
 .tokenPanelHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.6px;
-  color: #1e293b;
-  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #94A3B8;
+  background: #101D33;
+  border-bottom: 1px solid #1E3350;
 }
 
-.tokenRow {
+.tokenPanelHint {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #64748B;
+}
+
+.tokenGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 6px;
+  padding: 10px;
+}
+
+.tokenChip {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  text-align: left;
-  background: #fff;
-  border: none;
-  border-bottom: 1px solid #f1f5f9;
-  cursor: pointer;
+  align-items: stretch;
+  border: 1px solid #2A4468;
+  border-radius: 6px;
+  background: #101D33;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 
-.tokenRow:last-child { border-bottom: none; }
-.tokenRow:hover { background: #f8fafc; }
+.tokenChip:hover {
+  border-color: #7C3AED;
+  background: #16233D;
+  transform: translateY(-1px);
+}
 
-.tokenText {
+.tokenChip:focus-within {
+  border-color: #A78BFA;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.25);
+}
+
+.tokenChipMain {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
+  padding: 7px 9px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
 }
 
-.tokenName {
+.tokenChipName {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   font-weight: 700;
-  color: #7c3aed;
+  /* Lightened from #7C3AED, which is unreadable on the dark chip surface. */
+  color: #C4B5FD;
 }
 
-.tokenLabel {
-  font-size: 11px;
-  color: #475569;
-}
+.tokenChipMain:hover .tokenChipName { color: #DDD6FE; }
 
-.tokenKhmer {
-  font-size: 11px;
-  /* Khmer needs a font that actually has the glyphs, or the label renders as
-     tofu boxes next to every token. */
+/* Khmer needs a font that actually has the glyphs, or the label renders as
+   tofu boxes next to every token. */
+.tokenChipKhmer {
   font-family: 'Noto Sans Khmer', 'Khmer OS', sans-serif;
-  color: #dc2626;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #CBD5E1;
 }
 
-.tokenCopy {
-  margin-left: auto;
+.tokenChipCopy {
   flex: none;
+  align-self: center;
   display: inline-flex;
   align-items: center;
-  padding: 4px;
-  border-radius: 4px;
-  color: #64748b;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 5px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #64748B;
   cursor: pointer;
 }
 
-.tokenCopy:hover { background: #e2e8f0; color: #0f172a; }
+.tokenChipCopy:hover { background: #1E3350; color: #C4B5FD; }
 
-/* Donor name / message inputs in the preview action bar. */
+/* Donor name / message inputs in the preview action bar.
+   These were white with near-black text, which read as a different app dropped
+   into the dark card. Now they sit on the same dark surface as every other
+   field, one step inset so they still read as inputs against the panel. */
 .actionInput {
   width: 130px;
   padding: 5px 9px;
   font-family: 'Rajdhani', sans-serif;
   font-size: 13px;
-  color: #0f172a;
-  background: #fff;
-  border: 1px solid #cbd5e1;
+  color: #E2E8F0;
+  background: #0B1526;
+  border: 1px solid #1E3350;
   border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
+
+.actionInput::placeholder { color: #64748B; }
+
+.actionInput:hover { border-color: #2A4468; }
 
 .actionInput:focus {
   outline: none;
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3);
+  background: #0E1B30;
+  border-color: #7C3AED;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.25);
 }
 
 .label {
@@ -1083,6 +1136,31 @@
   font-size: 13px;
   color: #F8FAFC;
   line-height: 1.6;
+}
+
+.templateErrors {
+  margin: 8px 0 0;
+  padding: 9px 12px 9px 30px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  background: rgba(127, 29, 29, 0.12);
+  color: #FCA5A5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Advisories only -- a template that omits {message} is valid and savable.
+   Deliberately amber, never red: red here made a non-blocking hint read as a
+   failure and sent creators looking for a bug that was not there. */
+.templateWarnings {
+  margin: 8px 0 0;
+  padding: 9px 12px 9px 30px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 6px;
+  background: rgba(120, 53, 15, 0.12);
+  color: #FCD34D;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* Responsive */

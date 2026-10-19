@@ -8,6 +8,8 @@ import {
   parseTemplate,
   speechText,
   splitSpeechText,
+  shouldPlayLocalTestSpeech,
+  validateAlertTemplate,
 } from "@/lib/overlay/alert-logic";
 import styles from "./alerts.module.css";
 import {
@@ -109,7 +111,8 @@ const TEMPLATE_TOKENS = [
   { token: "{message}", label: "The message from ABA", khmer: "សារយើងពី ABA" },
   { token: "{newline}", label: "Add a line break in the text", khmer: "បន្ទាត់ថ្មី" },
   { token: "{space}", label: "Add a space", khmer: "ចន្លោះ" },
-  { token: "{space:X}", label: "Add X spaces (e.g. {space:10})", khmer: "បន្លោះ X ដង" },
+  { token: "{space:10}", label: "Add X spaces (edit the number)", khmer: "បន្លោះ X ដង" },
+  { token: "{avatar}", label: "Place the donor avatar", khmer: "រូបភាពអ្នកបង់ប្រាក់" },
 ] as const;
 
 /** Raw `alert_settings` row as it comes back from the table. */
@@ -175,6 +178,8 @@ export default function AlertSettingsPage() {
   const [designMode, setDesignMode] = useState(false);
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  /** Lets a token chip hand focus back to the template field. */
+  const templateInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [customTestMessage, setCustomTestMessage] = useState("អរគុណសម្រាប់ការលាយស្ទ្រីមដ៏ល្អ!");
   // The donor name a TEST alert is sent under. It lives beside the message so a
@@ -224,7 +229,7 @@ export default function AlertSettingsPage() {
   const [selectedAvatar, setSelectedAvatar] = useState("🦔");
 
   // Template & Timing
-  const [template, setTemplate] = useState("អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency}");
+  const [template, setTemplate] = useState("អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency} {message}");
   const alertDuration = ALERT_DURATION_SECONDS;
   const [textDelay, setTextDelay] = useState(2);
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -285,6 +290,7 @@ export default function AlertSettingsPage() {
       ? [{ name: "Saved Custom Sound", url: selectedSoundUrl }]
       : []),
   ];
+  const templateErrors = validateAlertTemplate(template);
 
   /**
    * Populates the whole form from one raw `alert_settings` row. Passing null
@@ -302,7 +308,7 @@ export default function AlertSettingsPage() {
     setImageUrl(row.image_url ?? "");
     setImageScale(row.image_scale ?? 50);
     setShowDonorAvatar(row.show_donor_profile ?? true);
-    setTemplate(row.message_template || "អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency}");
+    setTemplate(row.message_template || "អរគុណ {name} សម្រាប់ការឧបត្ថម {amount}{currency} {message}");
     setTextColor(row.text_color || "#FFFFFF");
     setBgColor(row.bg_color || "#000000");
     setFontFamily(fromStoredFont(row.font_family || "'Noto Sans Khmer', sans-serif"));
@@ -659,19 +665,15 @@ export default function AlertSettingsPage() {
         message: testMessage,
         template: savedTestSettings?.message_template || template,
       });
-      const speech = showCanvasPreview(true, savedTestDuration, {
+      const playLocalSpeech = shouldPlayLocalTestSpeech(response.ok);
+      void showCanvasPreview(playLocalSpeech, savedTestDuration, {
         amount,
         currency,
         message: testMessage,
         template: savedTestSettings?.message_template || template,
         volume: savedTestSettings?.tts_volume ?? ttsVolume,
       });
-      showToast(`${activeTierName} test alert sent to OBS; reading the saved template.`);
-      void speech.then((result) => {
-        if (result === "failed") {
-          showToast("OBS test sent, but dashboard speech playback failed. Check the TTS service and browser audio output.");
-        }
-      });
+      showToast(`${activeTierName} test alert sent to OBS; speech is handled by the overlay.`);
     } catch {
       showToast("Could not send the test alert. Check your connection and OBS overlay.");
     } finally {
@@ -800,6 +802,11 @@ export default function AlertSettingsPage() {
   };
 
   const handleSave = async () => {
+    if (templateErrors.errors.length) {
+      setSaveMsg("");
+      setSaveErr(templateErrors.errors.join(" "));
+      return;
+    }
     setSaving(true);
     setSaveMsg("");
     setSaveErr("");
@@ -874,7 +881,11 @@ export default function AlertSettingsPage() {
    */
   const appendToken = (token: string) => {
     setTemplate((current) => `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`);
-    setTokenPanelOpen(false);
+    // The panel deliberately stays open. Tokens are chips now, and a real
+    // template is normally built from two or three of them -- closing on the
+    // first click meant reopening the panel between each one. Focus moves to the
+    // field so the creator can keep typing straight afterwards.
+    templateInputRef.current?.focus();
   };
 
   /**
@@ -1538,48 +1549,41 @@ export default function AlertSettingsPage() {
 
                 {tokenPanelOpen && (
                   <div className={styles.tokenPanel} role="group" aria-label="Available tokens">
-                    <div className={styles.tokenPanelHeader}>Available Tokens</div>
-                    {TEMPLATE_TOKENS.map(({ token, label, khmer }) => (
-                      <button
-                        key={token}
-                        type="button"
-                        className={styles.tokenRow}
-                        onClick={() => appendToken(token)}
-                        title={`Add ${token} to the template`}
-                      >
-                        <span className={styles.tokenText}>
-                          <code className={styles.tokenName}>{token}</code>
-                          <span className={styles.tokenLabel}>{label}</span>
-                          <span className={styles.tokenKhmer}>{khmer}</span>
-                        </span>
-                        <span
-                          className={styles.tokenCopy}
-                          role="button"
-                          tabIndex={0}
-                          title={`Copy ${token}`}
-                          aria-label={`Copy ${token}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            copyToken(token);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              copyToken(token);
-                            }
-                          }}
-                        >
-                          {copiedToken === token ? <Check size={13} /> : <Copy size={13} />}
-                        </span>
-                      </button>
-                    ))}
+                    <div className={styles.tokenPanelHeader}>
+                      <span>Available Tokens</span>
+                      <span className={styles.tokenPanelHint}>Click to insert</span>
+                    </div>
+                    <div className={styles.tokenGrid}>
+                      {TEMPLATE_TOKENS.map(({ token, label, khmer }) => (
+                        <div className={styles.tokenChip} key={token}>
+                          <button
+                            type="button"
+                            className={styles.tokenChipMain}
+                            onClick={() => appendToken(token)}
+                            title={`${label} — inserts ${token}`}
+                          >
+                            <span className={styles.tokenChipName}>{token}</span>
+                            <span className={styles.tokenChipKhmer}>{khmer}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.tokenChipCopy}
+                            onClick={() => copyToken(token)}
+                            title={`Copy ${token}`}
+                            aria-label={`Copy ${token}`}
+                          >
+                            {copiedToken === token ? <Check size={12} /> : <Copy size={12} />}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 <textarea
                   id="tts-template-input"
                   rows={3}
+                  ref={templateInputRef}
                   className={styles.textarea}
                   value={template}
                   onChange={(e) => setTemplate(e.target.value)}
@@ -1600,6 +1604,21 @@ export default function AlertSettingsPage() {
                     })}
                   </p>
                 </div>
+                {templateErrors.errors.length > 0 && (
+                  <ul className={styles.templateErrors} role="alert">
+                    {templateErrors.errors.map((error) => <li key={error}>{error}</li>)}
+                  </ul>
+                )}
+                {templateErrors.warnings.length > 0 && (
+                  /* Advisories, not failures: these do not block Save (only
+                     `errors` do, see handleSave). They were rendered with the
+                     same red styling as errors, so a creator whose template
+                     simply omits a placeholder was reading an advisory as
+                     something that had gone wrong. */
+                  <ul className={styles.templateWarnings} role="status">
+                    {templateErrors.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                )}
               </div>
               <div className={styles.controlGroup}>
                 <label className={styles.label}>TTS Volume ({ttsVolume}%)</label>

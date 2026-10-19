@@ -740,6 +740,14 @@ export default function AlertsOverlayPage({
   const [queue, setQueue] = useState<Tip[]>([]);
   const [loading, setLoading] = useState(true);
   const [lookupError, setLookupError] = useState(false);
+  // Set when the claim endpoint rejects our token specifically (HTTP 401). That
+  // is not transient: it means the token in this browser source no longer exists
+  // in streamkit_overlay_credentials, almost always because somebody regenerated
+  // the secret while this source stayed open. The alert cannot be claimed, so it
+  // is dropped -- and before this existed the ONLY signal was a console.error,
+  // which a viewer never sees. OBS just showed nothing. Surfacing it on screen
+  // is the difference between "the overlay is broken" and "re-copy your URL".
+  const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const seenRef = useRef<Set<string>>(new Set());
   const baselineSeenRef = useRef<Set<string>>(new Set());
@@ -831,6 +839,10 @@ export default function AlertsOverlayPage({
           error?: string;
         } | null;
         if (!claimResponse.ok || !claim) {
+          // 401 from claim-alert means streamkit_resolve_overlay() found no row
+          // for this token. Show it on screen rather than dropping the alert
+          // silently.
+          if (claimResponse.status === 401) setTokenInvalid(true);
           console.error(
             `[alerts] payment_id=${next.id} stage=event_claim result=failed ` +
               `status=${claimResponse.status} reason=${claim?.error?.slice(0, 60) ?? "invalid_response"}`,
@@ -843,6 +855,10 @@ export default function AlertsOverlayPage({
           setIsProcessingAlert(false);
           return;
         }
+        // A successful claim proves the token resolves again -- clear the stale
+        // URL banner. Without this it would stay on screen until OBS was
+        // manually refreshed, long after the underlying fault was repaired.
+        setTokenInvalid(false);
         triggerAlert(
           next,
           settingsRef.current ?? s,
@@ -924,7 +940,13 @@ export default function AlertsOverlayPage({
             alert_animation: (cfg as AlertSettings).alert_animation ?? cfg.animation_type,
             text_animation: (cfg as AlertSettings).text_animation ?? "Fade",
             text_delay: (cfg as AlertSettings).text_delay ?? 0,
-            donor_avatar: (cfg as AlertSettings).donor_avatar ?? "ðŸ¦”",
+            // These two fallbacks mirror the defaults in streamkit_resolve_overlay()
+            // exactly, because the SQL is the source of truth for a creator who
+            // has never opened the alerts settings. Both literals were stored
+            // here as cp1252 mojibake (the hedgehog and the Khmer sentence had
+            // been UTF-8 decoded with the wrong codec), so a creator who had not
+            // yet saved a template saw a garbled string on stream.
+            donor_avatar: (cfg as AlertSettings).donor_avatar ?? "🦔",
           };
 
           const v: VoiceSettings = {
@@ -1037,6 +1059,21 @@ export default function AlertsOverlayPage({
 
         let pollTicks = 0;
         let pollFailureLogged = false;
+        // 1s, not 3s. The postgres_changes subscription below is NOT the instant
+        // path in practice: the overlay runs as the `anon` role, and `tips` has
+        // no grant for anon (its only grants are to `authenticated` and
+        // `service_role`). Supabase applies RLS as the connected role, so an anon
+        // subscriber is delivered no rows and the channel sits at SUBSCRIBED
+        // while never emitting an INSERT. That is why every alert arrived via
+        // "poll new=N" and the creator saw a lag of up to a full poll interval.
+        //
+        // Granting anon SELECT on tips would fix it but is NOT an option: the
+        // table has a `using (true)` select policy, so it would publish every
+        // donor name, amount and message to anyone holding the public anon key.
+        // The poll calls streamkit_recent_alerts(), which is SECURITY DEFINER
+        // and scoped by the overlay token, so it stays safe. Lowering the
+        // interval is the fix that does not leak the donation feed.
+        const POLL_MS = 1000;
         pollTimer = window.setInterval(async () => {
           pollTicks += 1;
           // Chromium freezes or heavily throttles timers in a page it considers
@@ -1063,9 +1100,12 @@ export default function AlertsOverlayPage({
             }
             if (disposed || !recent || recent.length === 0) return;
             console.warn(`[alerts] poll new=${recent.length}`);
-            if ((recent as Tip[]).some((tip) => tip.payment_status === "test")) {
-              if (!(await refreshOverlayConfig())) return;
-            }
+            // No config refresh here. The drain effect re-reads the creator's
+            // settings immediately before the alert is spoken, which is the
+            // guarantee that matters, and it runs on every alert regardless of
+            // how it arrived. Refreshing again at enqueue time put two
+            // streamkit_resolve_overlay round trips in front of the card for no
+            // additional safety.
             sinceRef.current = (recent[recent.length - 1] as Tip).created_at;
             // `receivedLive` is passed explicitly because forEach supplies the array index
             // as the second argument. That made it a NUMBER here: tip 0 got 0
@@ -1079,7 +1119,7 @@ export default function AlertsOverlayPage({
               console.warn(`[alerts] poll threw=${errorNameOf(error) ?? "unknown"}`);
             }
           }
-        }, 3000);
+        }, POLL_MS);
 
         // Re-apply settings on save from the dashboard (no OBS refresh needed)
         settingsRefreshTimer = window.setInterval(async () => {
@@ -1107,8 +1147,8 @@ export default function AlertsOverlayPage({
     return (
       <div className={styles.invalidToken} role="alert">
         {lookupError
-          ? "âš  Unable to validate OBS URL. Check Supabase connection."
-          : "âš  Invalid or missing token. Use /overlay/alerts?token=YOUR_TOKEN"}
+          ? "⚠ Unable to validate OBS URL. Check Supabase connection."
+          : "⚠ Invalid or missing token. Use /overlay/alerts?token=YOUR_TOKEN"}
       </div>
     );
   }
@@ -1120,7 +1160,7 @@ export default function AlertsOverlayPage({
     image_url = "",
     image_scale = 50,
     show_donor_profile = true,
-    message_template = "áž¢ážšáž‚áž»ážŽ {name} ážŸáž˜áŸ’ážšáž¶áž”áŸ‹áž€áž¶ážšáž§áž”ážáŸ’ážáž˜ {amount}{currency}",
+    message_template = "Thank you {name} for {amount}{currency}",
     text_color = "#FFFFFF",
     font_color,
     bg_color = "#000000",
@@ -1159,6 +1199,12 @@ export default function AlertsOverlayPage({
 
   return (
     <div className={styles.overlayRoot} aria-live="polite">
+      {tokenInvalid && (
+        <div className={styles.invalidToken} role="alert">
+          Overlay URL is no longer valid. Copy the browser source URL again from
+          Dashboard &rarr; Browser Source and paste it into OBS.
+        </div>
+      )}
       {currentAlert && (
         <div
           key={currentAlert.id}

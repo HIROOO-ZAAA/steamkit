@@ -8,6 +8,7 @@ import {
   highlightText,
   parseTemplate,
   pickTier,
+  shouldPlayLocalTestSpeech,
   splitSpeechText,
   speechText,
   shouldSpeakAlert,
@@ -342,6 +343,11 @@ describe("alert test speech policy", () => {
     assert.equal(shouldSpeakAlert(true, false), true);
     assert.equal(shouldSpeakAlert(false, false), false);
     assert.equal(shouldSpeakAlert(false, false, true), true);
+  });
+
+  it("routes accepted OBS test speech through the overlay without a dashboard duplicate", () => {
+    assert.equal(shouldPlayLocalTestSpeech(true), false);
+    assert.equal(shouldPlayLocalTestSpeech(false), true);
   });
 });
 

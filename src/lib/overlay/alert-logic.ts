@@ -76,6 +76,33 @@ export type TemplateTip = Pick<
   "tipper_name" | "amount" | "currency" | "message"
 >;
 
+const SUPPORTED_TEMPLATE_TOKEN = /^(?:name|amount|currency|message|newline|space|space:\d{1,3}|avatar)$/;
+
+export type AlertTemplateValidation = { errors: string[]; warnings: string[] };
+
+/** Validate creator-authored alert templates before showing a saved success state. */
+export function validateAlertTemplate(template: string): AlertTemplateValidation {
+  const errors: string[] = [];
+  if (!template.trim()) errors.push("Template cannot be empty.");
+  if (template.length > 1000) errors.push("Template must be 1,000 characters or fewer.");
+
+  const unsupported = new Set<string>();
+  const found = new Set<string>();
+  const withoutTokens = template.replace(/\{([^{}]*)\}/g, (token, name: string) => {
+    if (SUPPORTED_TEMPLATE_TOKEN.test(name)) found.add(name.split(":")[0]);
+    else unsupported.add(token);
+    return "";
+  });
+  if (/[{}]/.test(withoutTokens)) errors.push("Template has an unmatched brace.");
+  if (unsupported.size) {
+    errors.push(`Unsupported placeholder${unsupported.size > 1 ? "s" : ""}: ${[...unsupported].join(", ")}`);
+  }
+  const warnings = ["name", "amount", "message"]
+    .filter((token) => !found.has(token))
+    .map((token) => `Template does not include {${token}}.`);
+  return { errors, warnings };
+}
+
 export function parseTemplate(template: string, tip: TemplateTip): string {
   return template
     .replace(/\{name\}/g, tip.tipper_name)
@@ -261,6 +288,11 @@ export function shouldSpeakAlert(
   hasSelectedClone = false,
 ): boolean {
   return ttsEnabled || isTestAlert || hasSelectedClone;
+}
+
+/** A successful OBS test is spoken by the overlay, avoiding duplicate local TTS. */
+export function shouldPlayLocalTestSpeech(overlayAlertAccepted: boolean): boolean {
+  return !overlayAlertAccepted;
 }
 
 /**

@@ -36,7 +36,19 @@ export async function POST(request: Request) {
     { p_token: body.overlayToken },
   );
   const overlay = Array.isArray(resolved) ? resolved[0] : resolved;
-  if (resolveError || !overlay?.creator_id) {
+  // These two failures are NOT the same and must not look the same. A 42501 here
+  // is the bridge missing `grant execute ... to service_role`, not a bad secret;
+  // reporting it as "invalid overlay token" sent the creator to re-copy a URL
+  // that was already correct. Log the SQLSTATE so it can never be guessed at
+  // again, and say plainly which side is broken.
+  if (resolveError) {
+    console.error(
+      `[claim-alert] streamkit_resolve_overlay failed code=${resolveError.code ?? "unknown"} ` +
+        `message=${String(resolveError.message ?? "").slice(0, 160)}`,
+    );
+    return response({ error: "alert service unavailable" }, 503);
+  }
+  if (!overlay?.creator_id) {
     return response({ error: "invalid overlay token" }, 401);
   }
 
