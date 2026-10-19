@@ -332,7 +332,7 @@ export default function PublicTipPage({
       setBakongId(creatorSettings?.bakong_id ?? "");
       setMerchantName(
         (creatorSettings?.merchant_display_name ?? "").trim() ||
-          (creator.display_name ?? "").trim() ||
+          (creator?.display_name ?? "").trim() ||
           "",
       );
       try {

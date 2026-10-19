@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   // overlay at `http://127.0.0.1:3000` — which is what OBS is configured with,
   // and what browser-source URLs are built from — is treated as cross-origin.
   // Without this the dev overlay never connects and HMR silently does nothing.
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.56.1"],
   images: {
     formats: ["image/avif", "image/webp"],
   },

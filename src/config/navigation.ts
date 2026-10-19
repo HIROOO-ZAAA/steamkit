@@ -2,9 +2,11 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   ChartNoAxesCombined,
+  Activity,
   Dices,
   Gift,
   HandCoins,
+  History,
   LayoutDashboard,
   Mic,
   MonitorUp,
@@ -27,11 +29,13 @@ export type DashboardNavItem = {
 export const dashboardNavigation = {
   creatorTools: [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Health & Alerts", href: "/dashboard/health", icon: Activity },
     { label: "Donations", href: "/dashboard/donations", icon: HandCoins },
     { label: "Analytics", href: "/dashboard/analytics", icon: ChartNoAxesCombined },
   ] satisfies DashboardNavItem[],
   streamingWidgets: [
     { label: "Alerts", href: "/dashboard/alerts", icon: Bell },
+    { label: "Alert History", href: "/dashboard/alert-history", icon: History },
     { label: "Voice Settings", href: "/dashboard/voice-settings", icon: Mic },
     { label: "Widget Overlays", href: "/dashboard/widget-overlays", icon: Network },
     { label: "Goals", href: "/dashboard/goals", icon: Target },

@@ -24,11 +24,13 @@ export async function consumeTelegramGroupLink(
   const secret = process.env.TELEGRAM_LINK_TOKEN_SECRET;
   if (!secret) throw new Error("Telegram group linking is not configured.");
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) throw new Error("Supabase is not configured.");
+  const supabaseKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) throw new Error("Supabase is not configured.");
 
   const tokenHash = createHmac("sha256", secret).update(token).digest("hex");
-  const supabase = createClient(supabaseUrl, anonKey, {
+  const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { data, error } = await supabase.rpc("streamkit_link_telegram_group", {

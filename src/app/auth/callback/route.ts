@@ -48,12 +48,30 @@ function describeDevice(userAgent: string): string {
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  const requestedNext = searchParams.get('next')
+  const next =
+    requestedNext?.startsWith('/') && !requestedNext.startsWith('//')
+      ? requestedNext
+      : '/dashboard'
+
+  const redirectToAuth = (error: string) => {
+    const url = new URL('/auth', origin)
+    url.searchParams.set('error', error)
+    return NextResponse.redirect(url)
+  }
 
   if (code) {
-    const supabase = await createClient()
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
+    try {
+      const supabase = await createClient()
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+      if (error) {
+        console.error('[auth/callback] code exchange failed', {
+          code: error.code,
+          status: error.status,
+        })
+        return redirectToAuth('google_callback_failed')
+      }
+
       const user = data.user
       if (user) {
         try {
@@ -71,9 +89,14 @@ export async function GET(request: Request) {
         }
       }
       return NextResponse.redirect(`${origin}${next}`)
+    } catch (error) {
+      console.error('[auth/callback] unexpected callback failure', {
+        name:
+          error instanceof Error ? error.name.slice(0, 80) : 'UnknownError',
+      })
+      return redirectToAuth('google_callback_error')
     }
   }
 
-  // Return the user to an error page or auth page with instructions
-  return NextResponse.redirect(`${origin}/auth?error=Could%20not%20authenticate%20user`)
+  return redirectToAuth('google_callback_missing_code')
 }

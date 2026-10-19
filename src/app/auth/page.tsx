@@ -21,7 +21,18 @@ function AuthForm() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    switch (searchParams.get("error")) {
+      case "google_callback_failed":
+        return "Google signed in, but StreamKit could not finish the session. Check the Supabase redirect URL and the app's Supabase project settings, then try again.";
+      case "google_callback_error":
+        return "StreamKit hit a server error while finishing Google sign-in. Please try again; if it continues, check the server logs.";
+      case "google_callback_missing_code":
+        return "Google sign-in returned without an authorization code. Check the Google and Supabase callback URLs, then try again.";
+      default:
+        return "";
+    }
+  });
   const [success, setSuccess] = useState("");
 
   const supabase = createClient();

@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { selectWidgetSettings } from "@/lib/overlay/widget-settings";
 
 type WidgetSettings = {
   title?: string;
@@ -45,14 +46,15 @@ type LeaderboardEntry = {
 export default function WidgetOverlayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; widget?: string }>;
 }) {
-  const { token } = use(searchParams);
+  const { token, widget } = use(searchParams);
   const [supabase] = useState(() => createClient());
   const [settings, setSettings] = useState<WidgetSettings>({});
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [widgetMissing, setWidgetMissing] = useState(false);
   // Derived rather than stored: avoids a synchronous setState in the effect.
   const missingToken = !token;
 
@@ -70,7 +72,19 @@ export default function WidgetOverlayPage({
         setError(true);
         return;
       }
-      setSettings(data || {});
+      const selected = selectWidgetSettings(
+        data && typeof data === "object" && !Array.isArray(data)
+          ? data as Record<string, unknown>
+          : {},
+        widget,
+      );
+      if (!selected) {
+        setWidgetMissing(true);
+        setLoaded(true);
+        return;
+      }
+      setWidgetMissing(false);
+      setSettings(selected as WidgetSettings);
       setLoaded(true);
     }
 
@@ -101,7 +115,7 @@ export default function WidgetOverlayPage({
       window.clearInterval(t);
       void supabase.removeChannel(channel);
     };
-  }, [supabase, token, missingToken]);
+  }, [supabase, token, widget, missingToken]);
 
   useEffect(() => {
     if (!token) return;
@@ -130,6 +144,14 @@ export default function WidgetOverlayPage({
     return (
       <div style={{ padding: 20, color: "#f59e0b", fontFamily: "sans-serif", fontSize: 14 }}>
         Invalid or missing token. Use /overlay/widget?token=YOUR_TOKEN
+      </div>
+    );
+  }
+
+  if (widgetMissing) {
+    return (
+      <div style={{ padding: 20, color: "#f59e0b", fontFamily: "sans-serif", fontSize: 14 }}>
+        This widget no longer exists. Copy its current URL from Widget Overlays.
       </div>
     );
   }

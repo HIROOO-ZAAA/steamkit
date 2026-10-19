@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, Copy, Medal, Trophy, RotateCcw, Play, Pencil, Trash2, ArrowLeft } from "lucide-react";
+import { Check, Copy, Medal, Trophy, RotateCcw, Play, Pencil, Trash2, ArrowLeft, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { widgetOverlayUrl } from "@/lib/overlay/widget-url";
+import { validateWidgetSettings } from "@/lib/overlay/widget-validation";
 import styles from "./widget-overlays.module.css";
 
 const LB_FONTS = ['Press Start 2P','Orbitron','Audiowide','Black Ops One','Bungee','Quantico','VT323','Wallpoet','Exo 2','Bebas Neue','Anton','Bangers','Carter One','Fredoka','Fugaz One','Lilita One','Passion One','Paytone One','Righteous','Russo One','Squada One','Teko','Titan One','Ultra','Battambang','Moul','Koulen','Hanuman','Siemreap','Nokora','Taprom','Inter','Rajdhani','Poppins','Roboto','Montserrat','Lato','Nunito','Open Sans','Oswald','Rubik','Ubuntu','Merriweather','Playfair Display','Lobster','Pacifico'];
@@ -74,6 +76,8 @@ export default function WidgetOverlaysPage() {
     settings: Record<string, any>;
   }>>([]);
   const [toast, setToast] = useState("");
+  const [toastError, setToastError] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Declared after the state it reads/writes so there is no temporal-dead-zone
   // access on the first render.
@@ -113,8 +117,9 @@ export default function WidgetOverlaysPage() {
     void fetchWidgetToken();
   }, [supabase]);
   const [modal, setModal] = useState<{ type: "clear" | "test" | "delete"; goal: { id: number } } | null>(null);
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, isError = /failed|error/i.test(msg)) => {
     setToast(msg);
+    setToastError(isError);
     window.setTimeout(() => setToast(""), 2500);
   };
 
@@ -194,6 +199,7 @@ export default function WidgetOverlaysPage() {
       </div>
 
       {view === "list" ? (
+        <>
         <div className={styles.widgetTable}>
           <div className={styles.widgetHead}>
             <span>TITLE</span>
@@ -220,7 +226,21 @@ export default function WidgetOverlaysPage() {
               </span>
               <span style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button type="button" className={styles.actClear} onClick={() => setModal({ type: "clear", goal: w })}><RotateCcw size={14} /> Clear</button>
-                <button type="button" className={styles.actUnlock} title="Copy widget URL" style={{ width: 38, height: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }} onClick={() => { navigator.clipboard.writeText(widgetUrl); showToast("Widget URL copied for OBS."); }}><Copy size={15} /></button>
+                <button type="button" className={styles.actUnlock} title="Copy widget URL" style={{ width: 38, height: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }} onClick={async () => {
+                  const url = widgetOverlayUrl(widgetUrl, w.id);
+                  if (!url) return showToast("Widget URL is not ready. Reload this page and try again.", true);
+                  try {
+                    await navigator.clipboard.writeText(url);
+                    showToast("Widget URL copied for OBS.");
+                  } catch {
+                    showToast("Could not copy the widget URL. Check browser clipboard permissions.", true);
+                  }
+                }}><Copy size={15} /></button>
+                <button type="button" className={styles.actIcon} title="Preview widget" onClick={() => {
+                  const url = widgetOverlayUrl(widgetUrl, w.id);
+                  if (!url) return showToast("Widget URL is not ready. Reload this page and try again.", true);
+                  window.open(url, "_blank", "noopener,noreferrer");
+                }}><Eye size={15} /></button>
                 <button type="button" className={styles.actIcon} style={{ color: "#10B981" }} title="Send test donation" onClick={() => setModal({ type: "test", goal: w })}><Play size={15} /></button>
                 <button type="button" className={styles.actIcon} title="Edit" onClick={() => {
                   const s = w.settings ?? null;
@@ -259,6 +279,11 @@ export default function WidgetOverlaysPage() {
           ))}
           {widgets.length === 0 && <p style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No widgets yet. Create one to get started.</p>}
         </div>
+        <div className={`${styles.card} card`}>
+          <h3 className={styles.cardLabel}>ADD TO OBS</h3>
+          <p className={styles.subtitle}>Copy the URL for the specific widget, then add it in OBS as a Browser Source. Set the source dimensions to fit the widget and keep the background transparent. The URL keeps the existing private overlay token; do not share it publicly.</p>
+        </div>
+        </>
       ) : (
       <div>
         <button type="button" className={styles.backBtn} onClick={() => setView("list")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "#F8FAFC", cursor: "pointer", marginBottom: 16 }}>
@@ -404,41 +429,53 @@ export default function WidgetOverlaysPage() {
 
             <h4 className={styles.sectionLabel}>Session & Recent</h4>
             <button type="button" className={styles.initBtn} onClick={async () => {
+              if (saving) return;
+              setSaving(true);
               const newSettings = {
                 title: widgetTitle, dataSource, rows, rowGap, maxName, colors: { ...colors },
                 showBackground, showIcon, showMessage, showBorder,
                 fontFamily, fontSize, strokeW, strokeColor, entryAnimation, highlightEffect,
                 amountStyle, nameStyle, enableRanks, rankAsBadge, showStreak,
               };
-              const newWidgets = editingId
+              const validationError = validateWidgetSettings({ title: widgetTitle, rows, rowGap, maxName, fontSize, strokeW, colors });
+              if (validationError) {
+                showToast(validationError, true);
+                setSaving(false);
+                return;
+              }
+              const newWidgets = editingId !== null
                 ? widgets.map((x) => x.id === editingId ? { ...x, title: widgetTitle || "Widget", rows, animation: entryAnimation.toLowerCase().replace(/\s/g, ""), type: widgetTypeLabel(dataSource), colors: [colors.background, colors.border, colors.amount, colors.name, colors.message, colors.badgeBg], settings: newSettings } : x)
-                : [...widgets, { id: Math.floor(100 + Math.random() * 900), title: widgetTitle || "Widget", rows, animation: entryAnimation.toLowerCase().replace(/\s/g, ""), type: widgetTypeLabel(dataSource), colors: [colors.background, colors.border, colors.amount, colors.name, colors.message, colors.badgeBg], settings: newSettings }];
-              setWidgets(newWidgets);
+                : [...widgets, { id: Date.now() + Math.floor(Math.random() * 1000), title: widgetTitle || "Widget", rows, animation: entryAnimation.toLowerCase().replace(/\s/g, ""), type: widgetTypeLabel(dataSource), colors: [colors.background, colors.border, colors.amount, colors.name, colors.message, colors.badgeBg], settings: newSettings }];
               const storedSettings = { ...newSettings, widgets: newWidgets };
-              setEditingId(null);
-              setView("list");
               try {
                 const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                  const { error } = await supabase
-                    .from("streamkit_overlay_credentials")
-                    .update({ widget_settings: storedSettings })
-                    .eq("creator_id", user.id);
-                  if (error) {
-                    showToast(`Save failed: ${error.message}`);
-                    return;
-                  }
+                if (!user) throw new Error("Sign in again to save this widget.");
+                const { data, error } = await supabase
+                  .from("streamkit_overlay_credentials")
+                  .update({ widget_settings: storedSettings })
+                  .eq("creator_id", user.id)
+                  .select("creator_id")
+                  .maybeSingle();
+                if (error || !data) throw new Error("Widget settings could not be saved. Please retry.");
+                setWidgets(newWidgets);
+                setEditingId(null);
+                setView("list");
+                showToast("Widget saved. OBS overlay updated.");
+                try {
                   const channel = supabase.channel("streamkit-widget-settings");
                   await channel.subscribe();
                   await channel.send({ type: "broadcast", event: "updated", payload: {} });
                   void supabase.removeChannel(channel);
+                } catch {
+                  // The overlay also polls saved settings, so broadcast is best-effort.
                 }
-                showToast("Widget saved. OBS overlay updated.");
-              } catch (e) {
-                showToast(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+              } catch {
+                showToast("Widget settings could not be saved. Please retry.", true);
+              } finally {
+                setSaving(false);
               }
             }}>
-              {editingId ? "SAVE WIDGET" : "CREATE WIDGET"}
+              {saving ? "SAVING…" : editingId !== null ? "SAVE WIDGET" : "CREATE WIDGET"}
             </button>
           </div>
         </div>
@@ -542,24 +579,31 @@ border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
                   type="button"
                   onClick={async () => {
                     if (modal.type === "delete") {
-                      const remaining = widgets.filter((x) => x.id !== modal.goal.id);
-                      setWidgets(remaining);
-                      const { data: { user } } = await supabase.auth.getUser();
-                      if (user) {
-                        const { data: creds } = await supabase
+                      try {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) throw new Error("Sign in again to delete this widget.");
+                        const remaining = widgets.filter((x) => x.id !== modal.goal.id);
+                        const { data: creds, error: readError } = await supabase
                           .from("streamkit_overlay_credentials")
                           .select("widget_settings")
                           .eq("creator_id", user.id)
                           .maybeSingle();
-                        await supabase
+                        if (readError || !creds) throw new Error("Widget settings could not be loaded.");
+                        const { data, error } = await supabase
                           .from("streamkit_overlay_credentials")
-                          .update({ widget_settings: { ...(creds?.widget_settings ?? {}), widgets: remaining } })
-                          .eq("creator_id", user.id);
+                          .update({ widget_settings: { ...(creds.widget_settings ?? {}), widgets: remaining } })
+                          .eq("creator_id", user.id)
+                          .select("creator_id")
+                          .maybeSingle();
+                        if (error || !data) throw new Error("Widget could not be deleted. Please retry.");
+                        setWidgets(remaining);
+                        showToast("Widget deleted.");
+                      } catch {
+                        showToast("Widget could not be deleted. Please retry.", true);
                       }
-                      showToast("Widget deleted.");
                     } else if (modal.type === "clear") {
                       const { error } = await supabase.rpc("streamkit_widget_clear_history");
-                      showToast(error ? `Clear failed: ${error.message}` : "Widget history cleared. OBS will reset on next refresh.");
+                      showToast(error ? "Widget history could not be cleared. Please retry." : "Widget history cleared. OBS will reset on next refresh.", Boolean(error));
                     } else {
                       const { error } = await supabase.rpc("streamkit_insert_test_tip", {
                         p_name: "Test Donor",
@@ -567,7 +611,7 @@ border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
                         p_currency: "USD",
                         p_message: "Test donation from Widget Overlays",
                       });
-                      showToast(error ? `Test failed: ${error.message}` : "Test donation sent to OBS.");
+                      showToast(error ? "Test donation could not be sent. Please retry." : "Test donation sent to OBS.", Boolean(error));
                     }
                     setModal(null);
                   }}
@@ -579,7 +623,7 @@ border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
           </div>
         </div>
       )}
-      {toast && (<div className={styles.toast}><span className={styles.toastIcon}>✓</span><div><div className={styles.toastTitle}>Success</div><div className={styles.toastMsg}>{toast}</div></div></div>)}
+      {toast && (<div className={`${styles.toast} ${toastError ? styles.toastError : ""}`} role={toastError ? "alert" : "status"}><span className={styles.toastIcon}>{toastError ? "!" : <Check size={14} />}</span><div><div className={styles.toastTitle}>{toastError ? "Action failed" : "Success"}</div><div className={styles.toastMsg}>{toast}</div></div></div>)}
     </div>
   );
 }
