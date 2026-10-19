@@ -274,3 +274,8 @@ revoke all on function public.streamkit_touch_telegram_device(uuid)
   from public, anon;
 grant execute on function public.streamkit_touch_telegram_device(uuid)
   to authenticated;
+
+-- telegram_devices: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select on table public.telegram_devices to authenticated, service_role;
+grant select, insert, update, delete on table public.telegram_devices to service_role;

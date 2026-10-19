@@ -54,7 +54,12 @@ create table if not exists public.voice_clones (
   label text not null,
   -- Object path inside the private `voice-clones` bucket. Generated, never
   -- supplied by the client.
-  reference_audio_path text not null,
+  --
+  -- Nullable on purpose. No route writes this and no code reads it: samples are
+  -- sent to the provider and never kept here, so there is no `voice-clones`
+  -- bucket. It was declared NOT NULL, which on a fresh replay rejects every
+  -- insert because no caller ever supplies it.
+  reference_audio_path text,
   -- Optional. Supplying the exact transcript of the clip unlocks VoxCPM's
   -- "ultimate cloning" mode, which reproduces timbre, rhythm and emotion far
   -- more faithfully than reference audio alone.
@@ -65,9 +70,25 @@ create table if not exists public.voice_clones (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
+-- `create table if not exists` above is a NO-OP against a table that already
+-- exists, and in filename order every earlier migration guarantees one does. So
+-- a column first introduced in this file never reaches a real database. That is
+-- the same class of failure documented at the top of this file for `user_id`
+-- (42703), and it is what stranded `reference_transcript`:
+--
+-- POST /api/voice-clones writes the column, and PostgREST answered
+--   PGRST204  Could not find the 'reference_transcript' column of
+--             'voice_clones' in the schema cache
+-- which failed every save with "Could not save that voice. Try again."
+--
+-- Added explicitly, using the pattern 20261017000004 already uses for
+-- voicestudio_voice_id and the one this same file uses for voice_settings below.
+alter table public.voice_clones
+  add column if not exists reference_transcript text;
+
 alter table public.voice_clones enable row level security;
 
-grant select, insert, update, delete on table public.voice_clones to authenticated;
+grant select, insert, update, delete on table public.voice_clones to authenticated, service_role;
 
 drop policy if exists "Users manage own voice clones" on public.voice_clones;
 create policy "Users manage own voice clones"
@@ -296,4 +317,4 @@ as $function$
 $function$;
 
 revoke all on function public.streamkit_resolve_overlay(text) from public;
-grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated;
+grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated, service_role;

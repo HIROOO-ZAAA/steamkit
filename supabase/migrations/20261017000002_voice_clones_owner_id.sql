@@ -109,7 +109,7 @@ $migration$;
 -- cannot survive the rename.
 alter table public.voice_clones enable row level security;
 
-grant select, insert, update, delete on table public.voice_clones to authenticated;
+grant select, insert, update, delete on table public.voice_clones to authenticated, service_role;
 
 do $migration$
 declare

@@ -90,7 +90,7 @@ begin
     where n.nspname = 'public'
       and c.relname = 'tips'
       and i.indisunique
-      and pg_get_indexdef(i.indexid) like '%payment_transaction_id%'
+      and pg_get_indexdef(i.indexrelid) like '%payment_transaction_id%'
   ) then
     alter table public.tips
       add constraint tips_payment_transaction_id_key

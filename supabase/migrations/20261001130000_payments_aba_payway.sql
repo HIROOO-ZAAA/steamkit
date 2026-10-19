@@ -14,7 +14,7 @@ create table if not exists public.donations (
 
 alter table public.donations enable row level security;
 revoke all on table public.donations from anon, authenticated;
-grant select on table public.donations to authenticated;
+grant select on table public.donations to authenticated, service_role;
 drop policy if exists "Creators view own donations" on public.donations;
 create policy "Creators view own donations"
   on public.donations for select to authenticated
@@ -200,3 +200,9 @@ begin
   end if;
 end
 $publication$;
+
+
+-- service_role needs full DML on donations because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.donations to service_role;

@@ -99,7 +99,7 @@ alter table public.voice_clones alter column label set not null;
 -- ── RLS ───────────────────────────────────────────────────────────────────────
 alter table public.voice_clones enable row level security;
 
-grant select, insert, update, delete on table public.voice_clones to authenticated;
+grant select, insert, update, delete on table public.voice_clones to authenticated, service_role;
 
 -- The ...011 policy is keyed on `user_id`, which no longer exists. It would not
 -- merely be wrong, it would raise on every statement. Drop by name and by shape.
@@ -278,4 +278,4 @@ as $function$
 $function$;
 
 revoke all on function public.streamkit_resolve_overlay(text) from public;
-grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated;
+grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated, service_role;

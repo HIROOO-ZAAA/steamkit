@@ -51,3 +51,33 @@ BEGIN
       FOR ALL USING (auth.uid() = creator_id);
   END IF;
 END $$;
+
+
+-- creator_tip_settings is read and written by server routes through createAdminClient(),
+-- which runs as service_role. That role does not inherit from anon or
+-- authenticated, so a grant to authenticated alone leaves it locked out:
+-- PostgREST answers 42501 and the route fails with "permission denied for
+-- table creator_tip_settings". RLS is separate -- it narrows what a granted role may do,
+-- it never grants table access.
+-- anon reads this to build the public donation form on /pay/[username]. Safe to
+-- expose: minimums, feature toggles, a TTS voice name. No credentials.
+grant select on table public.creator_tip_settings to anon, authenticated, service_role;
+grant insert, update on table public.creator_tip_settings to authenticated, service_role;
+
+
+-- service_role needs full DML on creator_tip_settings because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.creator_tip_settings to service_role;
+
+
+-- creator_tip_settings: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select on table public.creator_tip_settings to anon, authenticated, service_role;
+grant select, insert, update on table public.creator_tip_settings to authenticated, service_role;
+
+
+-- media_share_queue: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select, update on table public.media_share_queue to authenticated, service_role;
+grant select, insert, update, delete on table public.media_share_queue to service_role;

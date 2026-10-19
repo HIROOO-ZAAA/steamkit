@@ -1,0 +1,57 @@
+-- PENDING RECONCILIATION -- DO NOT RUN.
+--
+-- The intent of this file is to stop storing the Telegram MTProto session in
+-- the database. telegram_groups.session_data was written by the dashboard's
+-- start-listener flow, which read GET /session from the local bridge and
+-- persisted the cleartext session string. That value is a full Telegram account
+-- credential: anyone holding it can take over the account that receives ABA
+-- PayWay payment notifications. Nothing ever read it back -- the bridge loads
+-- its agent token from telegram-local-agent.json on disk and uses only the
+-- SHA-256 hash for ingestion, and every application query selects explicit
+-- column lists.
+--
+-- WHY THIS IS NOT READY TO RUN
+--
+-- At the time of writing, PostgREST reports the column as already absent:
+--
+--   select=session_data -> HTTP 400, PostgreSQL code 42703
+--   "column telegram_groups.session_data does not exist"
+--
+-- Every other column on the table (id, creator_id, group_id, group_title,
+-- is_active, last_seen_at, created_at, updated_at) returns HTTP 200 from the
+-- same probe, and a deliberately bogus column name returns the same 400, so the
+-- absence is a real signal rather than a permissive endpoint.
+--
+-- How the column came to be absent is UNKNOWN. It was not dropped by any agent
+-- in this project: no migration was executed and no database write was made.
+-- Either it was removed through the Supabase SQL Editor outside version
+-- control, or it never existed in this project at all -- which would mean the
+-- migration that creates it (20261005000000_telegram_group_session_columns.sql)
+-- was never applied here. Those two explanations are not yet distinguished.
+--
+-- DO NOT RUN THIS MIGRATION. Running it now is a silent no-op: "if exists"
+-- suppresses the missing-column error, so it would exit 0 while changing
+-- nothing, which reads as success.
+--
+-- Resolve first, with the Supabase SQL Editor on project pqzvqyqnfauwbqvbtmkj:
+--
+--   select column_name, data_type
+--   from information_schema.columns
+--   where table_schema = 'public'
+--     and table_name = 'telegram_groups'
+--     and column_name = 'session_data';
+--
+-- Zero rows confirms the column is absent from that schema right now. One row
+-- means it exists and this migration is still outstanding. Neither result
+-- explains why, so also check pg_depend/pg_proc/pg_trigger for references --
+-- none of which can be checked from PostgREST.
+--
+-- Once the true state is known, this file should either be deleted (if the
+-- column is already gone) or have the banner removed and be applied (if it is
+-- not). Do not delete or recreate the column to make the two stories agree.
+--
+-- Rollback, if this ever is applied: re-adding the column restores the schema
+-- only. Any value stored before a drop is not recoverable from this statement.
+
+alter table public.telegram_groups
+  drop column if exists session_data;

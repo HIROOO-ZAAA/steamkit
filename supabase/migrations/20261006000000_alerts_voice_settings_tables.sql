@@ -26,7 +26,7 @@ alter table public.alert_settings add column if not exists updated_at timestamp 
 
 alter table public.alert_settings enable row level security;
 
-grant select, insert, update on table public.alert_settings to authenticated;
+grant select, insert, update on table public.alert_settings to authenticated, service_role;
 
 drop policy if exists "Users manage own alert settings" on public.alert_settings;
 create policy "Users manage own alert settings"
@@ -68,7 +68,7 @@ alter table public.voice_settings
 
 alter table public.voice_settings enable row level security;
 
-grant select, insert, update on table public.voice_settings to authenticated;
+grant select, insert, update on table public.voice_settings to authenticated, service_role;
 
 drop policy if exists "Users manage own voice settings" on public.voice_settings;
 create policy "Users manage own voice settings"
@@ -139,4 +139,15 @@ as $function$
 $function$;
 
 revoke all on function public.streamkit_resolve_overlay(text) from public;
-grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated;
+grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated, service_role;
+
+-- service_role needs full DML on voice_settings because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.voice_settings to service_role;
+
+
+-- service_role needs full DML on alert_settings because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.alert_settings to service_role;

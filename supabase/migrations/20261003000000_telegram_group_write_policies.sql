@@ -1,12 +1,12 @@
 grant insert (
   creator_id, telegram_chat_id, telegram_chat_title, telegram_chat_type,
   group_name, status, linked_at, last_seen_at
-) on public.telegram_groups to authenticated;
+) on table public.telegram_groups to authenticated, service_role;
 
 grant update (
   telegram_chat_title, telegram_chat_type, group_name, status,
   linked_at, last_seen_at, updated_at
-) on public.telegram_groups to authenticated;
+) on table public.telegram_groups to authenticated, service_role;
 
 drop policy if exists "Creators insert own Telegram groups" on public.telegram_groups;
 create policy "Creators insert own Telegram groups"

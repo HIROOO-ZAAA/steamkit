@@ -15,4 +15,4 @@ create policy "Creators manage own Telegram groups"
   using (auth.uid() = creator_id)
   with check (auth.uid() = creator_id);
 
-grant select, insert, update, delete on public.telegram_groups to authenticated;
+grant select, insert, update, delete on table public.telegram_groups to authenticated, service_role;

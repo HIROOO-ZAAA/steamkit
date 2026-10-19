@@ -258,6 +258,15 @@ create policy "Goals viewable by all" on public.donation_goals for select using 
 drop policy if exists "Users manage goals" on public.donation_goals;
 create policy "Users manage goals" on public.donation_goals for all using (auth.uid() = user_id);
 
+-- The Goals page writes goals straight from the browser client
+-- (dashboard/goals/page.tsx: select, insert, update, delete). Those need table
+-- privileges for the authenticated role, which are independent of the policies
+-- above: RLS only narrows what an already-granted role may do, it never grants.
+-- Without this the page failed every write with 42501 "permission denied for
+-- table donation_goals". Reads appeared to work only because overlays read goals
+-- through the SECURITY DEFINER function streamkit_get_goal_widget instead.
+grant select, insert, update, delete on table public.donation_goals to authenticated;
+
 drop policy if exists "Wheels viewable by all" on public.spin_wheels;
 create policy "Wheels viewable by all" on public.spin_wheels for select using (true);
 drop policy if exists "Users manage wheels" on public.spin_wheels;
@@ -392,7 +401,7 @@ as $function$
 $function$;
 
 revoke all on function public.streamkit_resolve_overlay(text) from public;
-grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated;
+grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated, service_role;
 
 -- Enable Supabase Realtime for tips and goals
 do $$
@@ -405,3 +414,84 @@ begin
   end if;
 exception when undefined_object then null;
 end $$;
+
+
+-- tips is read and written by server routes through createAdminClient(),
+-- which runs as service_role. That role does not inherit from anon or
+-- authenticated, so a grant to authenticated alone leaves it locked out:
+-- PostgREST answers 42501 and the route fails with "permission denied for
+-- table tips". RLS is separate -- it narrows what a granted role may do,
+-- it never grants table access.
+-- authenticated READS tips (alert history, dashboard, the overlay log). Writes
+-- go through SECURITY DEFINER RPCs or the service role, so authenticated is
+-- deliberately not granted INSERT/UPDATE/DELETE here.
+grant select on table public.tips to authenticated, service_role;
+
+
+-- tip_settings is read and written by server routes through createAdminClient(),
+-- which runs as service_role. That role does not inherit from anon or
+-- authenticated, so a grant to authenticated alone leaves it locked out:
+-- PostgREST answers 42501 and the route fails with "permission denied for
+-- table tip_settings". RLS is separate -- it narrows what a granted role may do,
+-- it never grants table access.
+-- anon reads this to build the public donation form on /pay/[username].
+-- Safe to expose: min amount, currency, suggested amounts, thank-you text.
+-- No credentials, no provider references.
+grant select on table public.tip_settings to anon, authenticated, service_role;
+grant insert, update on table public.tip_settings to authenticated, service_role;
+
+
+-- profiles is read by three different clients, so it needs three different
+-- grants. RLS is separate throughout -- it narrows what a granted role may do,
+-- it never grants table access -- and the existing policies already say what
+-- each role may see: "Public profiles viewable by all" and "Users manage own
+-- profile".
+--
+--   anon         SELECT. The public creator page (/[username]),
+--                /pay/[username] and its opengraph image are read by signed-out
+--                visitors, so without this every public page is a 42501. Safe
+--                because the table holds only public-facing fields: id,
+--                username, display_name, avatar_url, banner_url, bio,
+--                stream_title, role, created_at. No email, no tokens, no keys.
+--   authenticated SELECT + INSERT + UPDATE. The settings page and the browser
+--                source page upsert the creator's own row; RLS restricts those
+--                writes to auth.uid() = id.
+--   service_role  full DML, because app/api/payments/khqr reaches this table
+--                through createAdminClient() and that role inherits nothing.
+grant select on table public.profiles to anon, authenticated, service_role;
+grant insert, update on table public.profiles to authenticated, service_role;
+
+
+-- service_role needs full DML on tips because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.tips to service_role;
+
+
+-- service_role needs full DML on tip_settings because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.tip_settings to service_role;
+
+
+-- service_role needs full DML on profiles because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.profiles to service_role;
+
+
+-- profiles: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select on table public.profiles to anon, authenticated, service_role;
+grant select, insert, update on table public.profiles to authenticated, service_role;
+
+
+-- tip_settings: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select on table public.tip_settings to anon, authenticated, service_role;
+grant select, insert, update on table public.tip_settings to authenticated, service_role;
+
+
+-- tips: required by dashboard code running as the signed-in user.
+-- RLS still decides WHICH rows; this grants the table itself.
+grant select on table public.tips to authenticated, service_role;

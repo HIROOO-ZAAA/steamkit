@@ -135,7 +135,7 @@ as $function$
 $function$;
 
 revoke all on function public.streamkit_resolve_overlay(text) from public;
-grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated;
+grant execute on function public.streamkit_resolve_overlay(text) to anon, authenticated, service_role;
 
 
 

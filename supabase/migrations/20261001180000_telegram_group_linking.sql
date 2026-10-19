@@ -47,7 +47,7 @@ grant select (
   id, creator_id, telegram_chat_id, telegram_chat_title, telegram_chat_type,
   linked_by_telegram_username, group_name, status, token_expires_at,
   linked_at, last_seen_at, created_at, updated_at
-) on public.telegram_groups to authenticated;
+) on table public.telegram_groups to authenticated, service_role;
 
 drop policy if exists "Creators view own Telegram groups" on public.telegram_groups;
 create policy "Creators view own Telegram groups"
@@ -332,3 +332,17 @@ revoke all on function public.streamkit_claim_telegram_group_notification(uuid, 
   from public, anon, authenticated;
 grant execute on function public.streamkit_claim_telegram_group_notification(uuid, uuid, uuid)
   to service_role;
+
+-- telegram_group_events is read and written by server routes through createAdminClient(),
+-- which runs as service_role. That role does not inherit from anon or
+-- authenticated, so a grant to authenticated alone leaves it locked out:
+-- PostgREST answers 42501 and the route fails with "permission denied for
+-- table telegram_group_events". RLS is separate -- it narrows what a granted role may do,
+-- it never grants table access.
+grant select, insert, update, delete on table public.telegram_group_events to authenticated, service_role;
+
+
+-- service_role needs full DML on telegram_group_events because server routes reach it
+-- through createAdminClient(). This is a separate grant so the narrower
+-- privileges already granted to authenticated above are left unchanged.
+grant select, insert, update, delete on table public.telegram_group_events to service_role;
