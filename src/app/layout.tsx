@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import './globals.css'
+import { SIDEBAR_COLLAPSE_BOOTSTRAP } from '@/lib/sidebar'
 
 export const metadata: Metadata = {
   title: 'Steam Kit Stream — Live Creator Control Room',
@@ -17,8 +19,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // globals.css sets `scroll-behavior: smooth` on <html>. Next.js cannot carry
+  // that across a route transition on its own, so it asks for this attribute
+  // explicitly -- without it every navigation logs a console warning and the
+  // smooth scroll is dropped mid-transition.
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
+      <head>
+        <Script id="sidebar-collapse-bootstrap" strategy="beforeInteractive">
+          {SIDEBAR_COLLAPSE_BOOTSTRAP}
+        </Script>
+      </head>
       <body>{children}</body>
     </html>
   )

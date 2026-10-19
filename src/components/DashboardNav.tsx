@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { SIDEBAR_COLLAPSE_KEY, SIDEBAR_W, SIDEBAR_W_COLLAPSED } from "@/lib/sidebar";
 
 interface DashboardNavProps {
   user: {
@@ -23,14 +24,8 @@ interface DashboardNavProps {
   };
 }
 
-const STORAGE_KEY = "streamkit:sidebar-collapsed";
-const SIDEBAR_W = "330px";
-const SIDEBAR_W_COLLAPSED = "96px";
+const STORAGE_KEY = SIDEBAR_COLLAPSE_KEY;
 const SIDEBAR_EVENT = "streamkit:sidebar-state";
-
-const COLLAPSE_BOOTSTRAP = `(function(){try{if(localStorage.getItem(${JSON.stringify(
-  STORAGE_KEY,
-)})==="1"){document.documentElement.style.setProperty("--sidebar-w","${SIDEBAR_W_COLLAPSED}")}}catch(e){}})();`;
 
 function subscribeSidebar(onChange: () => void) {
   window.addEventListener("storage", onChange);
@@ -176,8 +171,6 @@ export default function DashboardNav({ user }: DashboardNavProps) {
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: COLLAPSE_BOOTSTRAP }} />
-
       {/* Mobile Top Header */}
       <header className={styles.mobileHeader}>
         <span className={styles.mobileBrandSlot} aria-hidden="true" />
