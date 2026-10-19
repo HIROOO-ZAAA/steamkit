@@ -20,6 +20,28 @@ import styles from "./kit-client.module.css";
 
 const BRIDGE = "http://127.0.0.1:3113";
 
+/**
+ * How long to wait for the bridge to hand over a QR before admitting it is not
+ * coming. Telegram tokens are generated within a second of boot; anything past
+ * this is a real failure, not slow work.
+ */
+const QR_WAIT_SECONDS = 20;
+
+/**
+ * Headers every bridge call must carry.
+ *
+ * The bridge binds to loopback, which stops remote hosts but not web pages: any
+ * site the creator opened could fetch it and read the response. The bridge now
+ * refuses any origin that is not loopback, and requires this header so the
+ * browser has to complete a CORS preflight first -- which it fails, because the
+ * preflight is answered from the same allowlist.
+ *
+ * The value is deliberately not a secret. It ships in this bundle; its job is to
+ * make the request non-simple so the origin check gets a say, not to be a
+ * credential.
+ */
+const BRIDGE_HEADERS = { "X-Kit-Client": "streamkit-dashboard" };
+
 type BridgeState = {
   status: string;
   qr: string | null;
@@ -93,6 +115,7 @@ export default function KitClientPage() {
   const [noticeVisible, setNoticeVisible] = useState(true);
   const [ttl, setTtl] = useState(30);
   const qrRef = useRef<string | null>(null);
+  const [qrStalled, setQrStalled] = useState(false);
   const logsRef = useRef<HTMLDivElement | null>(null);
   const [activeGroup, setActiveGroup] = useState<TelegramGroup | null>(null);
 
@@ -115,7 +138,7 @@ export default function KitClientPage() {
     let cancelled = false;
     async function poll() {
       try {
-        const res = await fetch(`${BRIDGE}/state`, { cache: "no-store" });
+        const res = await fetch(`${BRIDGE}/state`, { cache: "no-store", headers: BRIDGE_HEADERS });
         const data = (await res.json()) as BridgeState;
         if (cancelled) return;
         setBridge(data);
@@ -129,11 +152,20 @@ export default function KitClientPage() {
           setStage((s) => (s === "listening" ? s : "2fa_required"));
         } else if (data.status === "qr") {
           setStage((s) => (s === "listening" ? s : "qr"));
+        } else if (data.status === "starting") {
+          // "starting" is transitional. An attached listener (state.listening) is
+          // the ground truth, so trust it over the status string. Without this
+          // branch an unrecognised status left `stage` pinned at its initial
+          // "qr" and the page rendered the "Generating QR code..." spinner
+          // forever on a perfectly healthy, already-signed-in bridge.
+          setStage((s) => (data.listening ? "listening" : s));
         }
 
         if (data.qr && data.qr !== qrRef.current) {
           qrRef.current = data.qr;
           setTtl(30);
+          // A token finally arrived, so any earlier "no QR" verdict is void.
+          setQrStalled(false);
         }
       } catch {
         if (!cancelled) setBridgeOffline(true);
@@ -237,7 +269,7 @@ export default function KitClientPage() {
     try {
       await fetch(`${BRIDGE}/2fa`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...BRIDGE_HEADERS },
         body: JSON.stringify({ password }),
       });
       setNotice("Password submitted. Verifying...");
@@ -264,14 +296,12 @@ export default function KitClientPage() {
 
       const bridgeRes = await fetch(`${BRIDGE}/configure`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...BRIDGE_HEADERS },
         body: JSON.stringify({ agentToken: agent.agentToken, chatId: groupId, botUsername }),
       });
       const bridgeResult = await bridgeRes.json();
       if (!bridgeRes.ok) throw new Error(bridgeResult.error || "Bridge configuration failed.");
 
-      const sessionRes = await fetch(`${BRIDGE}/session`, { cache: "no-store" });
-      const sessionData = await sessionRes.json().catch(() => null);
       const { data: { user } } = await supabase.auth.getUser();
       const group = bridge?.groups.find((g) => g.id === groupId) ?? null;
       if (group) {
@@ -287,14 +317,26 @@ export default function KitClientPage() {
             group_id: groupId,
             group_title: group?.title ?? "Untitled",
             is_active: true,
-            session_data: typeof sessionData?.session === "string" ? sessionData.session : null,
+            // session_data is deliberately NOT written. It used to receive the
+            // cleartext Telegram MTProto session from GET /session, so a full
+            // account takeover credential landed in the database. Nothing ever
+            // read it back: the bridge loads its agent token from
+            // telegram-local-agent.json on disk, and ingestion only uses the
+            // SHA-256 token hash. Storing it added a remote copy of the session
+            // with no consumer. The column still exists (see
+            // 20261005000000_telegram_group_session_columns.sql); dropping it is a
+            // separate, deliberate migration so this change is verifiable first.
           },
           { onConflict: "creator_id,group_id" },
         );
       }
 
       setStage("listening");
-      setNotice("Listening for ABA PayWay messages.");
+      setNotice(
+        bridgeResult.switched
+          ? "Switched to the new group and listening for ABA PayWay messages."
+          : "Listening for ABA PayWay messages.",
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to start listener.");
     } finally {
@@ -307,7 +349,7 @@ export default function KitClientPage() {
     setError("");
     setNotice("");
     try {
-      await fetch(`${BRIDGE}/logout`, { method: "POST" });
+      await fetch(`${BRIDGE}/logout`, { method: "POST", headers: BRIDGE_HEADERS });
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         await supabase
@@ -317,6 +359,7 @@ export default function KitClientPage() {
           .eq("is_active", true);
       }
       qrRef.current = null;
+      setQrStalled(false);
       setChatId("");
       setActiveGroup(null);
       try {
@@ -338,15 +381,52 @@ export default function KitClientPage() {
 
   const activeStage = useMemo(() => {
     if (bridgeOffline) return "offline";
+
+    // Once the bridge answers, its status decides the screen. This used to
+    // CHANGE GROUP pins the picker. The poll deliberately never overwrites a
+    // stage of "authenticated", so this is the only escape hatch out of the
+    // listening screen -- it must be decided before the bridge status below.
     if (stage === "authenticated") return "authenticated";
+
+    // consult the local `stage` first, which meant every bridge status the poll
+    // effect did not recognise was masked and fell through to the QR screen.
+    if (bridge) {
+      // A bridge in error is NOT the QR screen. It previously fell through to
+      // `qr` and rendered the "Generating QR code..." placeholder, so a dropped
+      // Telegram socket looked identical to a login waiting to happen. If the
+      // bridge is retrying on its own there is nothing for the creator to do.
+      if (bridge.status === "error") return "error";
+      // An attached listener is the ground truth and outranks the status string.
+      // This returns "listening", not "authenticated": returning the latter made
+      // the whole listening screen unreachable, taking the transaction log and
+      // the LOGOUT / CHANGE GROUP controls with it.
+      if (bridge.status === "listening" || bridge.listening) return "listening";
+      if (bridge.status === "groups" || bridge.status === "authenticated") return "authenticated";
+      if (bridge.status === "password" || bridge.needs2fa) return "2fa";
+      if (bridge.status === "qr") return "qr";
+      // Transitional only -- keep the current stage rather than inventing one.
+      if (bridge.status === "starting" || bridge.status === "booting") {
+        return bridge.listening ? "listening" : stage;
+      }
+    }
+
+    // Bridge silent or not yet polled: the local stage drives the screen, which
+    // is what the 2FA / start-listening / logout actions set optimistically.
     if (stage === "2fa_required") return "2fa";
-    if (stage === "qr") return "qr";
-    if (bridge?.status === "listening") return "listening";
-    if (bridge?.status === "groups" || bridge?.status === "authenticated") return "authenticated";
-    if (bridge?.status === "password" || bridge?.needs2fa) return "2fa";
-    if (bridge?.status === "qr") return "qr";
+    if (stage === "listening") return "listening";
     return "qr";
   }, [bridge, bridgeOffline, stage]);
+
+  // A missing QR must eventually say so. While the page sat on the QR stage with
+  // no token it rendered an indeterminate spinner that read as "still working",
+  // whether the bridge was offline, errored, or reporting a status this page
+  // does not recognise. Only ever sets true here -- the reset happens when a
+  // token actually arrives (see the poll above) and on logout.
+  useEffect(() => {
+    if (activeStage !== "qr" || bridge?.qr || qrStalled) return;
+    const t = window.setTimeout(() => setQrStalled(true), QR_WAIT_SECONDS * 1000);
+    return () => window.clearTimeout(t);
+  }, [activeStage, bridge?.qr, qrStalled]);
 
   return (
     <main className={styles.screen}>
@@ -360,6 +440,16 @@ export default function KitClientPage() {
           <div className={styles.offlineState}>
             <LoaderCircle size={32} className={styles.spinner} />
             <p>Start the local bridge with <code>npm run kit-client:bridge</code>, then reload.</p>
+          </div>
+        )}
+
+        {activeStage === "error" && (
+          <div className={styles.offlineState} role="alert">
+            <X size={32} style={{ color: "var(--color-danger, #e5484d)" }} />
+            <p>
+              The Telegram bridge cannot reach Telegram right now. It retries on its
+              own — this screen updates as soon as the connection is back.
+            </p>
           </div>
         )}
 
@@ -387,9 +477,22 @@ export default function KitClientPage() {
                   </div>
                 </div>
               ) : (
-                <div className={styles.qrPlaceholder}>
-                  <LoaderCircle size={32} className={styles.spinner} />
-                  <span>Generating QR code...</span>
+                <div className={styles.qrPlaceholder} role={qrStalled ? "alert" : undefined}>
+                  {qrStalled ? (
+                    <>
+                      <X size={30} style={{ color: "var(--color-danger, #e5484d)" }} />
+                      <span>
+                        Telegram did not send a QR code. The bridge reported{" "}
+                        <code>{bridge?.status ?? "no response"}</code> — check its terminal
+                        output, then reload this page.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <LoaderCircle size={32} className={styles.spinner} />
+                      <span>Generating QR code...</span>
+                    </>
+                  )}
                 </div>
               )}
             </div>
