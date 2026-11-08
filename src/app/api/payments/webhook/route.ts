@@ -145,19 +145,17 @@ async function handleAbaWebhook(request: NextRequest) {
         paidAt.getTime() < new Date(payment.created_at).getTime() - 60_000 ||
         paidAt.getTime() > new Date(payment.expires_at).getTime()
       ) {
-        await Promise.all([
-          supabase
-            .from("payment_transactions")
-            .update({ status: "failed", failure_reason: "verified_transaction_mismatch" })
-            .eq("id", payment.id)
-            .in("status", ["pending", "processing"]),
-          supabase
-            .from("donations")
-            .update({ status: "failed" })
-            .eq("id", payment.donation_id)
-            .in("status", ["pending", "processing"]),
-          markWebhookProcessed(supabase, webhook.id),
-        ]);
+        await supabase.rpc(
+          "streamkit_transition_aba_payment",
+          {
+            p_payment_id: payment.id,
+            p_target_status: "review_required",
+            p_failure_reason: "verified_transaction_mismatch",
+            p_webhook_id: webhook.id,
+          },
+        ).then(({ error }) => {
+          if (error) throw error;
+        });
         return Response.json(
           { accepted: false, reason: "Verified payment did not match the request." },
           { status: 400, headers: { "Cache-Control": "no-store" } },
@@ -177,19 +175,28 @@ async function handleAbaWebhook(request: NextRequest) {
       if (completionError) throw completionError;
     } else {
       const terminalStatus =
-        checked.paymentStatus === "CANCELLED" ? "cancelled" : "failed";
-      await Promise.all([
-        supabase
-          .from("payment_transactions")
-          .update({ status: terminalStatus })
-          .eq("id", payment.id)
-          .in("status", ["pending", "processing"]),
-        supabase
-          .from("donations")
-          .update({ status: terminalStatus })
-          .eq("id", payment.donation_id)
-          .in("status", ["pending", "processing"]),
-      ]);
+        checked.paymentStatus === "CANCELLED"
+          ? "cancelled"
+          : checked.paymentStatus === "REFUNDED"
+            ? "refunded"
+            : "failed";
+
+      const { error: transitionError } = await supabase.rpc(
+        "streamkit_transition_aba_payment",
+        {
+          p_payment_id: payment.id,
+          p_target_status: terminalStatus,
+          p_failure_reason: null,
+          p_webhook_id: webhook.id,
+        },
+      );
+
+      if (transitionError) throw transitionError;
+
+      return Response.json(
+        { accepted: true, status: checked.paymentStatus, tranId },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     await markWebhookProcessed(supabase, webhook.id);

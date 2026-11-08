@@ -6,7 +6,6 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   Dices,
   Ghost,
-  History,
   Landmark,
   Lightbulb,
   Lock,
@@ -33,6 +32,21 @@ const USD_AMOUNTS = [0.1, 0.25, 0.5, 1, 5, 10];
 const KHR_AMOUNTS = [4000, 10000, 20000, 40000, 100000, 200000];
 
 type TipCurrency = "USD" | "KHR";
+type PaymentStatus =
+  | "pending"
+  | "successful"
+  | "failed"
+  | "expired"
+  | "review_required"
+  | "cancelled"
+  | "refunded";
+
+interface PaymentStatusResponse {
+  status?: PaymentStatus;
+  awaitingConfirmation?: boolean;
+  retryAfterSeconds?: number;
+  error?: string;
+}
 
 /** Lifetime of a generated QR, in seconds. Drives the countdown ring. */
 const QR_TTL = 300;
@@ -148,12 +162,6 @@ const HOWTOS: { icon: LucideIcon; content: React.ReactNode }[] = [
   },
 ];
 
-const RECENT_DONATIONS = [
-  { name: "m.megamind", amount: "$0.50", time: "10/1/2026 08:37 PM" },
-  { name: "m.megamind", amount: "$0.50", time: "9/30/2026 08:47 PM" },
-  { name: "m.megamind", amount: "$0.25", time: "9/11/2026 08:14 PM" },
-];
-
 export default function PublicTipPage({
   params,
 }: {
@@ -170,6 +178,9 @@ export default function PublicTipPage({
   const [tipperName, setTipperName] = useState("");
   const [qrString, setQrString] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
+  const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
   const [qrRecipient, setQrRecipient] = useState("");
   const [merchantName, setMerchantName] = useState("");
@@ -205,6 +216,118 @@ export default function PublicTipPage({
   const [qrReady, setQrReady] = useState(false);
   const [qrBlockReason, setQrBlockReason] = useState("");
   const [bakongId, setBakongId] = useState("");
+
+  useEffect(() => {
+    if (!paymentId) return;
+
+    let cancelled = false;
+    let retryTimer: number | undefined;
+    let activeController: AbortController | null = null;
+
+    function scheduleRetry(seconds: number) {
+      if (!cancelled) {
+        retryTimer = window.setTimeout(
+          () => void checkPaymentStatus(),
+          (Number.isFinite(seconds) && seconds > 0 ? seconds : 5) * 1000,
+        );
+      }
+    }
+
+    async function checkPaymentStatus() {
+      const controller = new AbortController();
+      activeController = controller;
+
+      try {
+        const response = await fetch(`/api/payments/${paymentId}/status`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = (await response.json().catch(() => ({}))) as PaymentStatusResponse;
+        if (cancelled) return;
+
+        if (response.status === 429 || response.status === 503 || response.status >= 500) {
+          setPaymentStatusMessage(
+            response.status === 503 || response.status >= 500
+              ? "Payment verification is temporarily unavailable. Retrying automatically."
+              : "Checking payment status. Retrying shortly.",
+          );
+          const headerRetry = Number(response.headers.get("Retry-After"));
+          scheduleRetry(
+            result.retryAfterSeconds ??
+              (Number.isFinite(headerRetry) && headerRetry > 0 ? headerRetry : 5),
+          );
+          return;
+        }
+
+        if (!response.ok) {
+          setPaymentStatusMessage(
+            result.error ?? "Unable to check payment status. Please try again later.",
+          );
+          return;
+        }
+
+        if (result.status === "successful") {
+          setPaymentStatus("successful");
+          setPaymentStatusMessage("Payment confirmed. Thank you for your support!");
+          setPaymentId(null);
+          return;
+        }
+
+        if (result.status === "pending") {
+          setPaymentStatusMessage(
+            result.awaitingConfirmation
+              ? "Automatic confirmation is temporarily unavailable. Keep this page open while we continue checking."
+              : qrExpiresAt !== null && Date.now() >= qrExpiresAt
+                ? "The QR time has elapsed. Checking with the payment provider for a final result."
+                : "Waiting for payment confirmation.",
+          );
+          scheduleRetry(result.retryAfterSeconds ?? 5);
+          return;
+        }
+
+        if (
+          result.status === "expired" ||
+          result.status === "failed" ||
+          result.status === "review_required" ||
+          result.status === "cancelled" ||
+          result.status === "refunded"
+        ) {
+          setPaymentStatus(result.status);
+          setPaymentStatusMessage(
+            result.status === "expired"
+              ? "This payment request expired."
+              : result.status === "review_required"
+                ? "Payment details need review. Please contact the streamer before trying again."
+                : result.status === "cancelled"
+                  ? "The payment was cancelled."
+                  : result.status === "refunded"
+                    ? "This payment was refunded."
+                  : "The payment could not be confirmed.",
+          );
+          setPaymentId(null);
+          return;
+        }
+
+        setPaymentStatusMessage("Checking payment status.");
+        scheduleRetry(result.retryAfterSeconds ?? 5);
+      } catch {
+        if (cancelled) return;
+        setPaymentStatusMessage(
+          "Payment verification is temporarily unavailable. Retrying automatically.",
+        );
+        scheduleRetry(10);
+      } finally {
+        if (activeController === controller) activeController = null;
+      }
+    }
+
+    void checkPaymentStatus();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      activeController?.abort();
+    };
+  }, [paymentId, qrExpiresAt]);
 
   const supabase = createClient();
   const amounts = currency === "USD" ? usdAmounts : khrAmounts;
@@ -357,28 +480,25 @@ export default function PublicTipPage({
     };
   }, [supabase, username]);
 
-  // Live countdown on the generated QR, exactly like the payment screen
-  // donors see on StreamNeon. When it runs out we drop back to the form.
+  // The countdown controls QR visibility; only server verification determines
+  // the payment result.
   useEffect(() => {
-    if (qrExpiresAt == null) return;
+    if (qrExpiresAt == null || paymentStatus !== "pending") return;
     const deadline = qrExpiresAt;
+    let id: number | undefined;
 
     function tick() {
-      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setSecondsLeft(left);
-      if (left === 0) {
-        setQrString(null);
-        setQrImage(null);
-        setQrExpiresAt(null);
-        setQrRecipient("");
-        setError("This QR expired — generate a new one to pay.");
-      }
+      if (left === 0 && id !== undefined) window.clearInterval(id);
+      return left;
     }
 
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [qrExpiresAt]);
+    if (tick() > 0) id = window.setInterval(tick, 1000);
+    return () => {
+      if (id !== undefined) window.clearInterval(id);
+    };
+  }, [paymentStatus, qrExpiresAt]);
 
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -467,13 +587,22 @@ export default function PublicTipPage({
       });
       const data = await res.json();
       if (data.qrImage || data.qrString) {
+        if (typeof data.paymentId !== "string" || !data.paymentId) {
+          setError("Payment was created but could not be tracked. Please contact the streamer before paying.");
+          return;
+        }
+        const expires = data.expiresAt ? new Date(data.expiresAt).getTime() : NaN;
+        const deadline = Number.isFinite(expires) ? expires : Date.now() + QR_TTL * 1000;
         setQrImage(data.qrImage ?? null);
         setQrString(data.qrString ?? null);
         setQrRecipient(
           typeof data.recipientName === "string" ? data.recipientName : "",
         );
-        const expires = data.expiresAt ? new Date(data.expiresAt).getTime() : NaN;
-        setQrExpiresAt(Number.isFinite(expires) ? expires : Date.now() + 5 * 60_000);
+        setPaymentStatus("pending");
+        setPaymentStatusMessage("Waiting for payment confirmation.");
+        setPaymentId(data.paymentId);
+        setQrExpiresAt(deadline);
+        setSecondsLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
       } else {
         setError(data.error || "Failed to generate KHQR");
       }
@@ -579,13 +708,6 @@ export default function PublicTipPage({
               </span>
             </div>
           </div>
-
-          <button
-            type="button"
-            className="bg-nexusSurface/90 border border-nexusPrimary/40 hover:border-nexusPrimary px-4 py-1.5 rounded-lg text-xs font-rajdhani font-bold uppercase text-nexusPrimary hover:bg-nexusPrimary hover:text-nexusNeutral transition-all tracking-wider shadow-sm"
-          >
-            ▦ WATCH MULTI-STREAM
-          </button>
         </div>
       </div>
 
@@ -594,7 +716,7 @@ export default function PublicTipPage({
         onSubmit={handleContinue}
         className="max-w-[1280px] mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6"
       >
-        {/* LEFT COLUMN: INSTRUCTIONS & RECENT TIPS */}
+        {/* LEFT COLUMN: INSTRUCTIONS */}
         <div className="lg:col-span-3 space-y-6">
           <div className="tip-card tip-rise tip-rise-2 bg-nexusSurface border border-nexusBorder rounded-xl p-5 space-y-4">
             <h3 className="font-rajdhani text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2 border-b border-nexusBorder pb-3">
@@ -615,34 +737,6 @@ export default function PublicTipPage({
                   </div>
                 );
               })}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="font-rajdhani text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <History className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              MY RECENT DONATIONS
-            </h4>
-
-            <div className="space-y-2">
-              {RECENT_DONATIONS.map((item, idx) => (
-                <div
-                  key={idx}
-                  className={`tip-card tip-rise tip-rise-${idx + 3} bg-nexusSurface border border-nexusBorder p-3 rounded-lg flex items-center justify-between`}
-                >
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      To: {item.name}
-                    </p>
-                    <p className="text-[12px] text-slate-400 font-mono mt-0.5">
-                      {item.time}
-                    </p>
-                  </div>
-                  <span className="font-rajdhani text-sm font-bold text-nexusPrimary">
-                    {item.amount}
-                  </span>
-                </div>
-              ))}
             </div>
           </div>
         </div>
@@ -917,119 +1011,143 @@ export default function PublicTipPage({
                   ) : null}
                 </div>
 
-                {qrImage ? (
-                  /* PayWay returns a fully rendered KHQR card (banner, merchant,
-                     amount, QR). Show it untouched instead of nesting our own
-                     card around it. */
-                  <div className="rounded-2xl bg-white p-3 shadow-2xl ring-1 ring-nexusBorder/60">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={qrImage}
-                      alt={`Payment QR code for ${currency === "KHR" ? amount.toLocaleString() : amount.toFixed(2)} ${currency}`}
-                      width={256}
-                      height={256}
-                      decoding="async"
-                      className="mx-auto h-auto w-[min(256px,70vw)] object-contain"
-                    />
-                  </div>
-                ) : (
-                  /* Bakong hands back a QR string only, so we render the card. */
-                  <div className="w-[min(288px,80vw)] overflow-hidden rounded-2xl bg-white shadow-2xl">
-                    <div className="relative bg-rose-600 py-2.5 text-center">
-                      <p className="font-rajdhani text-sm font-bold uppercase tracking-[6px] text-white">
-                        KHQR
-                      </p>
-                      <div className="absolute right-0 top-0 h-full w-5 bg-rose-600 [clip-path:polygon(0_0,0_100%,100%_100%)]" />
-                    </div>
-
-                    <div className="px-6 pt-4 text-center">
-                      <p className="font-rajdhani text-[13px] font-bold text-slate-800">
-                        {username}
-                        {qrRecipient ? ` by ${qrRecipient}` : ""}
-                      </p>
-                      <p className="mt-1.5 font-mono text-2xl font-bold leading-none text-slate-900 tabular-nums">
-                        {currency === "KHR"
-                          ? amount.toLocaleString()
-                          : amount.toFixed(2)}{" "}
-                        <span className="text-sm font-semibold text-slate-500">
-                          {currency}
-                        </span>
-                      </p>
-                      <div className="mt-4 border-t border-dashed border-slate-300" />
-                    </div>
-
-                    <div className="flex justify-center px-6 pb-6 pt-4">
-                      <QRCodeSVG
-                        value={qrString ?? ""}
-                        size={280}
-                        level="H"
-                        className="h-auto w-[min(280px,82vw)]"
+                {paymentStatus === "pending" && secondsLeft > 0 ? (
+                  qrImage ? (
+                    /* PayWay returns a fully rendered KHQR card (banner, merchant,
+                       amount, QR). Show it untouched instead of nesting our own
+                       card around it. */
+                    <div className="rounded-2xl bg-white p-3 shadow-2xl ring-1 ring-nexusBorder/60">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrImage}
+                        alt={`Payment QR code for ${currency === "KHR" ? amount.toLocaleString() : amount.toFixed(2)} ${currency}`}
+                        width={256}
+                        height={256}
+                        decoding="async"
+                        className="mx-auto h-auto w-[min(256px,70vw)] object-contain"
                       />
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    /* Bakong hands back a QR string only, so we render the card. */
+                    <div className="w-[min(288px,80vw)] overflow-hidden rounded-2xl bg-white shadow-2xl">
+                      <div className="relative bg-rose-600 py-2.5 text-center">
+                        <p className="font-rajdhani text-sm font-bold uppercase tracking-[6px] text-white">
+                          KHQR
+                        </p>
+                        <div className="absolute right-0 top-0 h-full w-5 bg-rose-600 [clip-path:polygon(0_0,0_100%,100%_100%)]" />
+                      </div>
+
+                      <div className="px-6 pt-4 text-center">
+                        <p className="font-rajdhani text-[13px] font-bold text-slate-800">
+                          {username}
+                          {qrRecipient ? ` by ${qrRecipient}` : ""}
+                        </p>
+                        <p className="mt-1.5 font-mono text-2xl font-bold leading-none text-slate-900 tabular-nums">
+                          {currency === "KHR"
+                            ? amount.toLocaleString()
+                            : amount.toFixed(2)}{" "}
+                          <span className="text-sm font-semibold text-slate-500">
+                            {currency}
+                          </span>
+                        </p>
+                        <div className="mt-4 border-t border-dashed border-slate-300" />
+                      </div>
+
+                      <div className="flex justify-center px-6 pb-6 pt-4">
+                        <QRCodeSVG
+                          value={qrString ?? ""}
+                          size={280}
+                          level="H"
+                          className="h-auto w-[min(280px,82vw)]"
+                        />
+                      </div>
+                    </div>
+                  )
+                ) : paymentStatus === "pending" ? (
+                  <p className="max-w-sm text-center text-sm text-slate-300">
+                    The QR time has elapsed. We are still checking the payment with the server.
+                  </p>
+                ) : null}
 
                 {/* Countdown. tabular-nums stops the digits shifting the layout
                     every second; role=timer with a live label keeps screen
                     readers informed without a per-second announcement. */}
-                <div className="flex flex-col items-center gap-1.5">
-                  <div className="relative h-20 w-20">
-                    <svg
-                      viewBox="0 0 96 96"
-                      className="absolute inset-0 h-full w-full -rotate-90 text-nexusPrimary"
-                      aria-hidden="true"
-                      focusable="false"
-                    >
-                      <circle
-                        cx="48"
-                        cy="48"
-                        r="42"
-                        fill="none"
-                        strokeWidth="6"
-                        className="stroke-nexusBorder"
-                      />
-                      <circle
-                        cx="48"
-                        cy="48"
-                        r="42"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray={2 * Math.PI * 42}
-                        strokeDashoffset={
-                          2 * Math.PI * 42 *
-                          (1 - Math.min(1, Math.max(0, secondsLeft / QR_TTL)))
-                        }
-                        className="transition-[stroke-dashoffset] duration-1000 ease-linear"
-                      />
-                    </svg>
-                    <span
-                      role="timer"
-                      aria-label={`${secondsLeft} seconds left on this QR code`}
-                      aria-live="off"
-                      className="absolute inset-0 grid place-items-center font-mono text-xl font-bold text-white tabular-nums"
-                    >
-                      {secondsLeft}
-                    </span>
+                {paymentStatus === "pending" ? (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="relative h-20 w-20">
+                      <svg
+                        viewBox="0 0 96 96"
+                        className="absolute inset-0 h-full w-full -rotate-90 text-nexusPrimary"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <circle
+                          cx="48"
+                          cy="48"
+                          r="42"
+                          fill="none"
+                          strokeWidth="6"
+                          className="stroke-nexusBorder"
+                        />
+                        <circle
+                          cx="48"
+                          cy="48"
+                          r="42"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={2 * Math.PI * 42}
+                          strokeDashoffset={
+                            2 * Math.PI * 42 *
+                            (1 - Math.min(1, Math.max(0, secondsLeft / QR_TTL)))
+                          }
+                          className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+                        />
+                      </svg>
+                      <span
+                        role="timer"
+                        aria-label={`${secondsLeft} seconds left on this QR code`}
+                        aria-live="off"
+                        className="absolute inset-0 grid place-items-center font-mono text-xl font-bold text-white tabular-nums"
+                      >
+                        {secondsLeft}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-medium uppercase tracking-[2px] text-slate-500">
+                      {secondsLeft > 0
+                        ? "seconds left"
+                        : "payment status still being checked"}
+                    </p>
                   </div>
-                  <p className="text-[11px] font-medium uppercase tracking-[2px] text-slate-500">
-                    seconds left
+                ) : null}
+
+                {paymentStatusMessage ? (
+                  <p
+                    className="max-w-sm text-center text-sm text-slate-300"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {paymentStatusMessage}
                   </p>
-                </div>
+                ) : null}
 
                 <button
                   type="button"
                   onClick={() => {
+                    setPaymentId(null);
+                    setPaymentStatus(null);
+                    setPaymentStatusMessage("");
                     setQrString(null);
                     setQrImage(null);
                     setQrExpiresAt(null);
                     setQrRecipient("");
+                    setSecondsLeft(0);
                     setError("");
                   }}
                   className="rounded-lg border border-nexusBorder px-5 py-2 text-xs font-rajdhani font-bold uppercase tracking-[2px] text-slate-300 transition-colors hover:border-nexusPrimary hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nexusPrimary focus-visible:ring-offset-2 focus-visible:ring-offset-nexusNeutral"
                 >
-                  ← Go Back
+                  {paymentStatus === "successful" ? "Done" : "← Go Back"}
                 </button>
               </div>
             )}

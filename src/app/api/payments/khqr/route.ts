@@ -66,6 +66,62 @@ async function loadTipLimits(
   };
 }
 
+type DonorMedia = {
+  photoPath: string;
+  voicePath: string;
+  voiceDurationSeconds: number | null;
+};
+
+const PHOTO_PATH_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpe?g|webp|gif)$/i;
+const VOICE_PATH_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webm|ogg|m4a|mp3|wav)$/i;
+
+/**
+ * Parses the optional donation media paths once for both payment providers, so
+ * Bakong and ABA PayWay cannot drift on validation or on the error a donor
+ * sees. An invalid voice path is rejected rather than dropped: a donor who
+ * recorded a message should not watch it disappear at payment time.
+ */
+function parseDonorMedia(
+  input: Record<string, unknown>,
+):
+  | { ok: true; media: DonorMedia }
+  | { ok: false; error: string } {
+  const photoPath =
+    typeof input.photoPath === "string"
+      ? input.photoPath.trim().slice(0, 160)
+      : "";
+  const photoSafe =
+    photoPath !== "" && PHOTO_PATH_PATTERN.test(photoPath) ? photoPath : "";
+
+  const voicePath =
+    typeof input.voicePath === "string"
+      ? input.voicePath.trim().slice(0, 160)
+      : "";
+  if (voicePath !== "" && !VOICE_PATH_PATTERN.test(voicePath)) {
+    return {
+      ok: false,
+      error: "That voice message could not be read. Try recording again.",
+    };
+  }
+
+  const voiceDurationRaw = Number(input.voiceDurationSeconds);
+  const voiceDurationSeconds =
+    voicePath !== "" && Number.isFinite(voiceDurationRaw)
+      ? Math.min(Math.max(Math.round(voiceDurationRaw), 1), 30)
+      : null;
+
+  return {
+    ok: true,
+    media: {
+      photoPath: photoSafe,
+      voicePath,
+      voiceDurationSeconds,
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   // Keep an unconsumed copy so the ABA branch can re-read the JSON body.
   const bodyCopy = request.clone() as NextRequest;
@@ -124,6 +180,9 @@ export async function POST(request: NextRequest) {
   if (currency === "KHR" && !Number.isInteger(amount))
     return jsonError("KHR amounts must be whole numbers.", 400);
 
+  const media = parseDonorMedia(input);
+  if (!media.ok) return jsonError(media.error, 400);
+
   try {
     const supabase = createAdminClient();
     await loadBakongMerchantConfig(supabase);
@@ -181,6 +240,11 @@ export async function POST(request: NextRequest) {
     }
 
     const paymentId = randomUUID();
+    // Bakong used to write only a payment_transactions row, so a donor's voice
+    // message was silently dropped and the completion RPC had no donation to
+    // read media from. Create the donation first, link it below, and let the
+    // existing tips_copy_donation_media trigger carry the media onto the tip.
+    const donationId = randomUUID();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const khqr = generateDynamicKhqr({
       paymentId,
@@ -189,10 +253,29 @@ export async function POST(request: NextRequest) {
       expiresAt,
       merchant,
     });
+
+    const { error: donationError } = await supabase.from("donations").insert({
+      id: donationId,
+      creator_id: profile.id,
+      donor_name: donorName || "Anonymous",
+      message: message || null,
+      amount,
+      currency,
+      status: "pending",
+      photo_path: media.media.photoPath || null,
+      photo_status: media.media.photoPath ? "pending" : "none",
+      voice_path: media.media.voicePath || null,
+      voice_duration_seconds: media.media.voicePath
+        ? media.media.voiceDurationSeconds
+        : null,
+    });
+    if (donationError) throw donationError;
+
     const { error: insertError } = await supabase
       .from("payment_transactions")
       .insert({
         id: paymentId,
+        donation_id: donationId,
         creator_id: profile.id,
         donor_name: donorName || "Anonymous",
         amount,
@@ -204,7 +287,21 @@ export async function POST(request: NextRequest) {
         expires_at: expiresAt.toISOString(),
       });
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      await supabase.from("donations").delete().eq("id", donationId);
+      throw insertError;
+    }
+
+    const { error: donationStatusError } = await supabase
+      .from("donations")
+      .update({ status: "processing" })
+      .eq("id", donationId);
+    if (donationStatusError) {
+      console.error(
+        "[payments/khqr] Failed to mark donation as processing:",
+        donationStatusError.message,
+      );
+    }
 
     return Response.json(
       {
@@ -261,38 +358,11 @@ async function createAbaPaywayPayment(request: NextRequest) {
     typeof input.message === "string" ? input.message.trim().slice(0, 250) : "";
   const amount = Number(input.amount);
   const currency = input.currency;
-  const photoPath =
-    typeof input.photoPath === "string"
-      ? input.photoPath.trim().slice(0, 160)
-      : "";
-  const photoSafe =
-    photoPath !== "" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpe?g|webp|gif)$/i.test(
-      photoPath,
-    )
-      ? photoPath
-      : "";
-
-  // Same shape as photoSafe: an object path produced by POST /api/donation-voice,
-  // re-validated here so a client cannot point the overlay at an arbitrary
-  // bucket or smuggle a query string. Reject rather than silently drop -- a
-  // donor who recorded a message should not watch it disappear at payment time.
-  const voicePath =
-    typeof input.voicePath === "string"
-      ? input.voicePath.trim().slice(0, 160)
-      : "";
-  if (
-    voicePath !== "" &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webm|ogg|m4a|mp3|wav)$/i.test(
-      voicePath,
-    )
-  ) {
-    return jsonError("That voice message could not be read. Try recording again.", 400);
-  }
-  const voiceDurationRaw = Number(input.voiceDurationSeconds);
-  const voiceDurationSeconds = Number.isFinite(voiceDurationRaw)
-    ? Math.min(Math.max(Math.round(voiceDurationRaw), 1), 30)
-    : null;
+  const media = parseDonorMedia(input);
+  if (!media.ok) return jsonError(media.error, 400);
+  const photoSafe = media.media.photoPath;
+  const voicePath = media.media.voicePath;
+  const voiceDurationSeconds = media.media.voiceDurationSeconds;
 
   // Must match the character set the Identity Matrix allows when saving a
   // username (lowercase letters, digits, dot, underscore, hyphen). "@" is
@@ -393,10 +463,16 @@ async function createAbaPaywayPayment(request: NextRequest) {
       .eq("id", paymentId);
     if (updateError) throw updateError;
 
-    await supabase
+    const { error: donationStatusError } = await supabase
       .from("donations")
       .update({ status: "processing" })
       .eq("id", donationId);
+    if (donationStatusError) {
+      console.error(
+        "[payments/khqr] Failed to mark donation as processing:",
+        donationStatusError.message,
+      );
+    }
 
     return Response.json(
       {

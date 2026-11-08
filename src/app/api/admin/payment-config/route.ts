@@ -28,12 +28,39 @@ function last4(value: unknown): string {
   return v ? v.slice(-4) : "";
 }
 
-async function requireUser() {
+/**
+ * Global merchant credentials are shared by every creator, so only an
+ * administrator may read or change them. The role check runs through the
+ * session client (profiles are publicly readable) and fails closed: a missing
+ * role column or a failed lookup is treated as "not an admin", never as a pass.
+ */
+async function requireAdmin() {
   const userClient = await createServerClient();
   const {
     data: { user },
   } = await userClient.auth.getUser();
-  return user;
+  if (!user) {
+    return {
+      response: json({ error: "Sign in to manage payment credentials." }, 401),
+    };
+  }
+
+  const { data: profile, error } = await userClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error || profile?.role !== "admin") {
+    return {
+      response: json(
+        { error: "Admin access is required to manage payment credentials." },
+        403,
+      ),
+    };
+  }
+
+  return { response: null };
 }
 
 type AdminSupabase = ReturnType<typeof createAdminClient>;
@@ -130,8 +157,8 @@ async function saveBakongConfig(
 }
 
 export async function GET() {
-  const user = await requireUser();
-  if (!user) return json({ error: "Sign in to manage payment credentials." }, 401);
+  const { response } = await requireAdmin();
+  if (response) return response;
 
   const serviceRoleReady = Boolean(
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
@@ -196,8 +223,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await requireUser();
-  if (!user) return json({ error: "Sign in to manage payment credentials." }, 401);
+  const { response } = await requireAdmin();
+  if (response) return response;
 
   const serviceRoleReady = Boolean(
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),

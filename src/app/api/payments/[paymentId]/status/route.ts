@@ -32,7 +32,7 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
     const { data: payment, error } = await supabase
       .from("payment_transactions")
       .select(
-        "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash",
+        "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
       )
       .eq("id", paymentId)
       .maybeSingle();
@@ -41,7 +41,21 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
     if (!payment) return json({ error: "Payment not found." }, 404);
 
     if (payment.provider === "aba_payway") {
-      if (payment.status === "completed") return await paymentResult(supabase, payment);
+      if (payment.status === "completed" || payment.status === "successful") {
+        return await paymentResult(supabase, payment);
+      }
+      if (
+        payment.status === "failed" ||
+        payment.status === "cancelled" ||
+        payment.status === "expired"
+      ) {
+        return await updateAbaTerminalStatus(
+          supabase,
+          payment,
+          payment.status,
+        );
+      }
+
       if (payment.status !== "pending" && payment.status !== "processing") {
         return json({ status: payment.status });
       }
@@ -72,19 +86,13 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
       );
       if (verified.paymentStatus === "PENDING") {
         if (Date.now() >= new Date(payment.expires_at).getTime()) {
-          await Promise.all([
-            supabase
-              .from("payment_transactions")
-              .update({ status: "expired" })
-              .eq("id", payment.id)
-              .in("status", ["pending", "processing"]),
-            supabase
-              .from("donations")
-              .update({ status: "failed" })
-              .eq("id", payment.donation_id),
-          ]);
-          return json({ status: "expired" });
+          return await updateAbaTerminalStatus(
+            supabase,
+            payment,
+            "expired",
+          );
         }
+
         return json({ status: "pending", retryAfterSeconds: 5 });
       }
 
@@ -99,18 +107,12 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
           paidAt.getTime() < new Date(payment.created_at).getTime() - 60_000 ||
           paidAt.getTime() > expiresAt.getTime()
         ) {
-          await Promise.all([
-            supabase
-              .from("payment_transactions")
-              .update({ status: "failed", failure_reason: "amount_or_currency_mismatch" })
-              .eq("id", payment.id)
-              .in("status", ["pending", "processing"]),
-            supabase
-              .from("donations")
-              .update({ status: "failed" })
-              .eq("id", payment.donation_id),
-          ]);
-          return json({ status: "failed" });
+          return await updateAbaTerminalStatus(
+            supabase,
+            payment,
+            "review_required",
+            "amount_or_currency_mismatch",
+          );
         }
 
         const { error: completionError } = await supabase.rpc(
@@ -128,7 +130,7 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
         const { data: completedPayment, error: completedError } = await supabase
           .from("payment_transactions")
           .select(
-            "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash",
+            "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
           )
           .eq("id", payment.id)
           .single();
@@ -137,48 +139,51 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
       }
 
       const terminalStatus =
-        verified.paymentStatus === "CANCELLED" ? "cancelled" : "failed";
-      await Promise.all([
-        supabase
-          .from("payment_transactions")
-          .update({ status: terminalStatus })
-          .eq("id", payment.id)
-          .in("status", ["pending", "processing"]),
-        supabase
-          .from("donations")
-          .update({ status: terminalStatus })
-          .eq("id", payment.donation_id),
-      ]);
-      return json({ status: terminalStatus });
-    }
+        verified.paymentStatus === "CANCELLED"
+          ? "cancelled"
+          : verified.paymentStatus === "REFUNDED"
+            ? "refunded"
+            : "failed";
 
-    // khqr/route.ts issues the QR with the creator's own bakong_id when they set
-    // one, so verification has to compare against that same account. Reading it
-    // from the env here would send a paying creator to "review_required"
-    // forever the moment bakong_id differs from BAKONG_ACCOUNT_ID.
-    const { data: creatorBakong } = await supabase
-      .from("creator_tip_settings")
-      .select("bakong_id")
-      .eq("creator_id", payment.creator_id)
-      .maybeSingle();
-    const creatorAccountId = (creatorBakong?.bakong_id ?? "").trim();
-    const merchant = creatorAccountId
-      ? { accountId: creatorAccountId }
-      : getBakongMerchant();
-    if (!merchant)
-      return json({ error: "Bakong payments are not configured yet." }, 503);
+      return await updateAbaTerminalStatus(
+        supabase,
+        payment,
+        terminalStatus,
+      );
+    }
 
     if (payment.status !== "pending")
       return await paymentResult(supabase, payment);
 
     const expiresAt = new Date(payment.expires_at);
-    if (Date.now() >= expiresAt.getTime()) {
-      await supabase
+    const graceEndsAt = expiresAt.getTime() + 10 * 60 * 1000;
+
+    // Keep checking after QR expiry, but require provider payment time to be
+    // no later than the original expiry. After 10 minutes, request manual review.
+    if (Date.now() >= graceEndsAt) {
+      const { error: graceError } = await supabase
         .from("payment_transactions")
-        .update({ status: "expired" })
+        .update({ status: "review_required" })
         .eq("id", payment.id)
         .eq("status", "pending");
-      return json({ status: "expired" });
+
+      if (graceError) throw graceError;
+
+      const { data: currentPayment, error: currentPaymentError } =
+        await supabase
+          .from("payment_transactions")
+          .select(
+            "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
+          )
+          .eq("id", payment.id)
+          .single();
+
+      if (currentPaymentError) throw currentPaymentError;
+      if (currentPayment.status === "successful") {
+        return await paymentResult(supabase, currentPayment);
+      }
+
+      return json({ status: currentPayment.status });
     }
 
     if (
@@ -199,44 +204,86 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
       );
     }
 
-    // The QR stays valid even without a Bakong API token — we just cannot confirm
-    // the payment automatically, so keep the donor on the QR until it expires.
-    if (!getBakongConfig()) {
-      return json({ status: "pending", awaitingConfirmation: true, retryAfterSeconds: 10 });
+    const { data: creatorBakong, error: creatorBakongError } =
+      await supabase
+        .from("creator_tip_settings")
+        .select("bakong_id")
+        .eq("creator_id", payment.creator_id)
+        .maybeSingle();
+
+    if (creatorBakongError) {
+      console.error(
+        "[payments/status] Unable to load creator Bakong account:",
+        creatorBakongError.message,
+      );
+      return json(
+        { status: "pending", awaitingConfirmation: true, retryAfterSeconds: 10 },
+        503,
+      );
+    }
+
+    const creatorAccountId = (creatorBakong?.bakong_id ?? "").trim();
+    const merchant = creatorAccountId
+      ? { accountId: creatorAccountId }
+      : getBakongMerchant();
+
+    // Missing configuration is not proof of non-payment. Keep the payment
+    // pending so it can still be verified during the grace period.
+    if (!merchant || !getBakongConfig()) {
+      return json({
+        status: "pending",
+        awaitingConfirmation: true,
+        retryAfterSeconds: 10,
+      });
     }
 
     const verification = await checkBakongTransaction(payment.provider_md5);
     if (verification.responseCode !== 0 || !verification.data) {
-      if (verification.errorCode === 3) {
-        await supabase
-          .from("payment_transactions")
-          .update({ status: "failed" })
-          .eq("id", payment.id)
-          .eq("status", "pending");
-        return json({ status: "failed" });
-      }
+      // A not-found/unknown response is not definitive proof that the donor
+      // did not pay. The grace-period check above bounds how long we wait.
       return json({ status: "pending", retryAfterSeconds: 5 });
     }
 
     const paidAmount = Number(verification.data.amount);
     const paidAt = Number(verification.data.createdDateMs);
+    const verifiedAccountId = verification.data.toAccountId;
     const valid =
+      typeof verification.data.hash === "string" &&
+      verification.data.hash.trim().length > 0 &&
       Number.isFinite(paidAmount) &&
       paidAmount === Number(payment.amount) &&
       verification.data.currency === payment.currency &&
-      verification.data.toAccountId.toLowerCase() ===
-        merchant.accountId.toLowerCase() &&
+      typeof verifiedAccountId === "string" &&
+      verifiedAccountId.trim().toLowerCase() ===
+        merchant.accountId.trim().toLowerCase() &&
       Number.isFinite(paidAt) &&
       paidAt >= new Date(payment.created_at).getTime() - 60000 &&
       paidAt <= expiresAt.getTime();
 
     if (!valid) {
-      await supabase
+      const { error: reviewError } = await supabase
         .from("payment_transactions")
         .update({ status: "review_required" })
         .eq("id", payment.id)
         .eq("status", "pending");
-      return json({ status: "review_required" });
+
+      if (reviewError) throw reviewError;
+
+      const { data: currentPayment, error: currentPaymentError } =
+        await supabase
+          .from("payment_transactions")
+          .select(
+            "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
+          )
+          .eq("id", payment.id)
+          .single();
+
+      if (currentPaymentError) throw currentPaymentError;
+      if (currentPayment.status === "successful") {
+        return await paymentResult(supabase, currentPayment);
+      }
+
+      return json({ status: currentPayment.status });
     }
 
     const { error: completionError } = await supabase.rpc(
@@ -246,7 +293,7 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
         p_provider_hash: verification.data.hash,
         p_verified_amount: paidAmount,
         p_verified_currency: verification.data.currency,
-        p_verified_account_id: verification.data.toAccountId,
+        p_verified_account_id: verifiedAccountId,
         p_expected_account_id: merchant.accountId,
         p_provider_paid_at: new Date(paidAt).toISOString(),
       },
@@ -254,10 +301,11 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
 
     if (completionError) throw completionError;
 
+    // The RPC completes the payment and linked donation atomically.
     const { data: completedPayment, error: completedError } = await supabase
       .from("payment_transactions")
       .select(
-        "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash",
+        "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
       )
       .eq("id", payment.id)
       .single();
@@ -272,6 +320,49 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
   }
 }
 
+async function updateAbaTerminalStatus(
+  supabase: ReturnType<typeof createAdminClient>,
+  payment: { id: string; donation_id: string | null },
+  terminalStatus:
+    | "expired"
+    | "failed"
+    | "cancelled"
+    | "refunded"
+    | "review_required",
+  failureReason?: string,
+) {
+  const { error: transitionError } = await supabase.rpc(
+    "streamkit_transition_aba_payment",
+    {
+      p_payment_id: payment.id,
+      p_target_status: terminalStatus,
+      p_failure_reason: failureReason ?? null,
+      p_webhook_id: null,
+    },
+  );
+
+  if (transitionError) throw transitionError;
+
+  const { data: currentPayment, error: currentPaymentError } =
+    await supabase
+      .from("payment_transactions")
+      .select(
+        "id, creator_id, donor_name, amount, currency, message, provider, provider_md5, tran_id, donation_id, status, expires_at, created_at, provider_hash, provider_paid_at",
+      )
+      .eq("id", payment.id)
+      .single();
+
+  if (currentPaymentError) throw currentPaymentError;
+
+  if (
+    currentPayment.status === "successful" ||
+    currentPayment.status === "completed"
+  ) {
+    return await paymentResult(supabase, currentPayment);
+  }
+
+  return json({ status: currentPayment.status });
+}
 async function paymentResult(
   supabase: ReturnType<typeof createAdminClient>,
   payment: {
@@ -287,6 +378,7 @@ async function paymentResult(
     tran_id?: string | null;
     donation_id?: string | null;
     provider_hash: string | null;
+    provider_paid_at?: string | null;
     expires_at: string;
     created_at: string;
   },
@@ -294,6 +386,7 @@ async function paymentResult(
   if (payment.status !== "successful" && payment.status !== "completed") {
     return json({ status: payment.status });
   }
+
 
   const { data: tip, error } = await supabase
     .from("tips")
