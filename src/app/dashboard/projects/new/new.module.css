@@ -89,6 +89,17 @@
   border: 1px solid var(--border-subtle);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .colorSwatch {
+    transition: none;
+  }
+
+  .colorSwatch:hover,
+  .selectedColor {
+    transform: none;
+  }
+}
+
 .checkboxLabel {
   display: flex;
   align-items: flex-start;

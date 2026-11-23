@@ -1,0 +1,640 @@
+/* =========================================================
+   Dashboard sidebar — Aurora Night shell
+   ========================================================= */
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: 288px;
+  padding: 1.1rem 0.9rem 1rem;
+  border-right: 1px solid var(--dash-border);
+  background-color: var(--dash-nav-bg);
+  background-image:
+    radial-gradient(480px 340px at 0% 0%, var(--dash-aurora-1), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 38%);
+  z-index: 90;
+  transition:
+    width var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* ---------- Brand ---------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 0.2rem 0.4rem 1rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--dash-accent) 34%, var(--dash-border));
+  border-radius: 11px;
+  background: linear-gradient(145deg, var(--dash-action-soft), transparent 72%);
+  color: var(--dash-accent-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 24px var(--dash-action-ring);
+}
+
+.brandMark svg {
+  width: 19px;
+  height: 19px;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandName {
+  color: var(--dash-text);
+  font: 700 0.96rem/1.1 "Rajdhani", sans-serif;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brandSub {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Nav ---------- */
+
+.nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 5px;
+  scrollbar-color: var(--dash-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.nav::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: var(--dash-border-strong);
+}
+
+.navItems {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1.05rem 0.5rem 0.32rem;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font: 600 0.75rem/1.4 "Inter", sans-serif;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.navGroup:first-child .sectionLabel {
+  margin-top: 0.2rem;
+}
+
+.sectionText {
+  flex: none;
+}
+
+.sectionRule {
+  flex: 1;
+  min-width: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--dash-border), transparent);
+}
+
+.navLink {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 38px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--dash-text-secondary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.navLink::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--dash-action);
+  content: "";
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.navLink:hover {
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.navLink:focus-visible {
+  outline-offset: 0;
+}
+
+.navLink.active {
+  border-color: var(--dash-success-border);
+  background: linear-gradient(90deg, var(--dash-action-soft), transparent 100%);
+  color: var(--dash-text);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dash-action) 5%, transparent);
+}
+
+.navLink.active::before {
+  transform: scaleY(1);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 7px;
+  color: var(--dash-text-muted);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.navLink:hover .icon {
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  transform: scale(1.04);
+}
+
+.navLink.active .icon {
+  background: var(--dash-action-soft);
+  color: var(--dash-accent-strong);
+}
+
+.linkText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  margin-left: auto;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  color: var(--dash-text-muted);
+  font: 700 0.56rem/1.2 var(--dash-font-mono);
+}
+
+/* ---------- Collapse control ---------- */
+
+.collapseBtn {
+  position: absolute;
+  top: 1.85rem;
+  right: -14px;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  background: var(--dash-nav-bg);
+  color: var(--dash-text-secondary);
+  cursor: pointer;
+  z-index: 30;
+  box-shadow: var(--dash-shadow-sm);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.collapseBtn:hover {
+  border-color: var(--dash-primary);
+  background: var(--dash-surface-raised);
+  color: var(--dash-primary);
+}
+
+.collapseBtn:focus-visible {
+  outline-offset: 2px;
+}
+
+.collapseBtnRotated svg {
+  transform: rotate(180deg);
+}
+
+/* ---------- Account footer ---------- */
+
+.userSection {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--dash-border);
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.52rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.userInfo:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--dash-success-border);
+  border-radius: 50%;
+  background: var(--dash-action-soft);
+  color: var(--dash-success);
+  font: 700 0.88rem "Rajdhani", sans-serif;
+}
+
+.userDetails {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.userEmail {
+  overflow: hidden;
+  color: var(--dash-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.userRole {
+  margin-top: 2px;
+  color: var(--dash-text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.footerActions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.themeSlot {
+  display: flex;
+  flex: none;
+}
+
+.signOutBtn {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  color: var(--dash-text-secondary);
+}
+
+.signOutBtn:hover:not(:disabled) {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.signOutIcon {
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- Collapsed rail ---------- */
+
+.collapsed {
+  width: 88px;
+  padding-right: 0.72rem;
+  padding-left: 0.72rem;
+}
+
+.collapsed .brand {
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.collapsed .brandText,
+.collapsed .linkText,
+.collapsed .sectionText,
+.collapsed .userDetails,
+.collapsed .badge {
+  display: none;
+}
+
+.collapsed .sectionLabel {
+  height: 1px;
+  margin: 0.9rem 0.45rem;
+  padding: 0;
+  background: var(--dash-border);
+}
+
+.collapsed .sectionRule {
+  display: none;
+}
+
+.collapsed .navLink {
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.45rem;
+}
+
+.collapsed .userInfo {
+  justify-content: center;
+  padding: 0.45rem;
+}
+
+.collapsed .footerActions {
+  flex-direction: column;
+}
+
+.collapsed .signOutBtn {
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.4rem;
+}
+
+.collapsed .themeSlot {
+  justify-content: center;
+}
+
+/* ---------- Mobile chrome ---------- */
+
+.mobileHeader {
+  display: none;
+}
+
+.scrim {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobileHeader {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--dash-border);
+    background: var(--dash-nav-bg);
+    z-index: 95;
+  }
+
+  .mobileBrand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mobileBrandText {
+    color: var(--dash-text);
+    font: 700 0.96rem "Rajdhani", sans-serif;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileActions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .sidebar {
+    top: 64px;
+    width: min(320px, 90vw);
+    padding: 1rem 0.9rem 1.1rem;
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: var(--dash-shadow-lg);
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 220ms;
+  }
+
+  .mobileVisible {
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
+  }
+
+  .collapseBtn {
+    display: none;
+  }
+
+  .scrim {
+    position: fixed;
+    inset: 0;
+    display: block;
+    background: var(--dash-scrim);
+    opacity: 0;
+    visibility: hidden;
+    z-index: 88;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 180ms;
+  }
+
+  .scrimVisible {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 0s;
+  }
+
+  .mobileToggleBtn {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--dash-border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--dash-text);
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .mobileToggleBtn:hover {
+    border-color: var(--dash-border-strong);
+    background: var(--dash-surface-hover);
+  }
+
+  .mobileToggleActive {
+    border-color: var(--dash-success-border);
+    background: var(--dash-action-soft);
+    color: var(--dash-primary);
+  }
+
+  .navLink {
+    min-height: 44px;
+  }
+
+  .collapsed {
+    width: min(320px, 90vw);
+    padding: 1rem 0.9rem 1.1rem;
+  }
+
+  .collapsed .brand {
+    justify-content: flex-start;
+    padding-right: 0.4rem;
+    padding-left: 0.4rem;
+  }
+
+  .collapsed .brandText,
+  .collapsed .linkText,
+  .collapsed .sectionText,
+  .collapsed .userDetails,
+  .collapsed .badge {
+    display: block;
+  }
+
+  .collapsed .brandText,
+  .collapsed .userDetails {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .collapsed .sectionLabel {
+    height: auto;
+    justify-content: flex-start;
+    margin: 1rem 0.5rem 0.3rem;
+    background: transparent;
+  }
+
+  .collapsed .sectionRule {
+    display: block;
+  }
+
+  .collapsed .navLink {
+    justify-content: flex-start;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .collapsed .userInfo {
+    justify-content: flex-start;
+    padding: 0.52rem;
+  }
+
+  .collapsed .footerActions {
+    flex-direction: row;
+  }
+
+  .collapsed .themeSlot {
+    display: none;
+  }
+
+  .collapsed .signOutBtn {
+    justify-content: flex-start;
+    min-height: 44px;
+    padding: 0.375rem 0.875rem;
+  }
+
+  .signOutBtn {
+    min-height: 44px;
+  }
+
+  .themeSlot {
+    display: none;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .scrim,
+  .navLink,
+  .navLink::before,
+  .icon,
+  .collapseBtn,
+  .mobileToggleBtn,
+  .userInfo {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+
+  .navLink:hover .icon {
+    transform: none;
+  }
+}

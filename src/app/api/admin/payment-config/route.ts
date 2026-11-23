@@ -13,6 +13,7 @@ import {
   setAbaMerchantConfigOverride,
   type AbaConfig,
 } from "@/lib/payments/aba-payway";
+import { requirePlatformAdmin, auditLog, getClientIp, getUserAgent, unauthorizedResponse } from "@/lib/auth/requirePlatformRole";
 
 export const runtime = "nodejs";
 
@@ -28,41 +29,6 @@ function last4(value: unknown): string {
   return v ? v.slice(-4) : "";
 }
 
-/**
- * Global merchant credentials are shared by every creator, so only an
- * administrator may read or change them. The role check runs through the
- * session client (profiles are publicly readable) and fails closed: a missing
- * role column or a failed lookup is treated as "not an admin", never as a pass.
- */
-async function requireAdmin() {
-  const userClient = await createServerClient();
-  const {
-    data: { user },
-  } = await userClient.auth.getUser();
-  if (!user) {
-    return {
-      response: json({ error: "Sign in to manage payment credentials." }, 401),
-    };
-  }
-
-  const { data: profile, error } = await userClient
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error || profile?.role !== "admin") {
-    return {
-      response: json(
-        { error: "Admin access is required to manage payment credentials." },
-        403,
-      ),
-    };
-  }
-
-  return { response: null };
-}
-
 type AdminSupabase = ReturnType<typeof createAdminClient>;
 
 /**
@@ -74,7 +40,27 @@ async function saveBakongConfig(
   supabase: AdminSupabase,
   input: Record<string, unknown>,
   env: "sandbox" | "production",
+  auth: { userId: string; platformRole: string },
+  request: Request
 ) {
+  // Capture before state for audit log
+  const { data: beforeData } = await supabase
+    .from("payment_merchant_credentials")
+    .select("*")
+    .eq("provider", "bakong")
+    .maybeSingle();
+
+  const before = beforeData ? {
+    provider: beforeData.provider,
+    env: beforeData.env,
+    accountId: beforeData.merchant_id,
+    merchantName: beforeData.merchant_name || "",
+    merchantCity: beforeData.merchant_city || "",
+    tokenSet: Boolean(beforeData.api_key),
+    status: beforeData.status,
+    validatedAt: beforeData.validated_at ?? null,
+  } : null;
+
   const accountId =
     typeof input.accountId === "string" ? input.accountId.trim() : "";
   const merchantName =
@@ -153,12 +139,45 @@ async function saveBakongConfig(
   // Apply immediately: the next checkout uses these credentials.
   setBakongMerchantOverride(merchant, apiToken, apiUrl);
 
+  // Capture after state for audit log
+  const { data: afterData } = await supabase
+    .from("payment_merchant_credentials")
+    .select("*")
+    .eq("provider", "bakong")
+    .maybeSingle();
+
+  const after = afterData ? {
+    provider: afterData.provider,
+    env: afterData.env,
+    accountId: afterData.merchant_id,
+    merchantName: afterData.merchant_name || "",
+    merchantCity: afterData.merchant_city || "",
+    tokenSet: Boolean(afterData.api_key),
+    status: afterData.status,
+    validatedAt: afterData.validated_at ?? null,
+  } : null;
+
+  // Audit log the update
+  await auditLog(supabase, {
+    actorId: auth.userId,
+    actorRole: auth.platformRole,
+    action: "update",
+    resourceType: "payment_config",
+    resourceId: "bakong",
+    before,
+    after,
+    ipAddress: getClientIp(request),
+    userAgent: getUserAgent(request),
+  });
+
   return json({ saved: true, provider: "bakong", status, detail });
 }
 
-export async function GET() {
-  const { response } = await requireAdmin();
-  if (response) return response;
+export async function GET(request: Request) {
+  const auth = await requirePlatformAdmin(request);
+  if (!auth) {
+    return unauthorizedResponse();
+  }
 
   const serviceRoleReady = Boolean(
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
@@ -186,6 +205,18 @@ export async function GET() {
       /* service role may be non-functional */
     }
   }
+
+  // Audit log the read action
+  const adminClient = createAdminClient();
+  await auditLog(adminClient, {
+    actorId: auth.userId,
+    actorRole: auth.platformRole,
+    action: "view",
+    resourceType: "payment_config",
+    resourceId: "global",
+    ipAddress: getClientIp(request),
+    userAgent: getUserAgent(request),
+  });
 
   return json({
     serviceRoleReady,
@@ -223,8 +254,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { response } = await requireAdmin();
-  if (response) return response;
+  const auth = await requirePlatformAdmin(request);
+  if (!auth) {
+    return unauthorizedResponse();
+  }
 
   const serviceRoleReady = Boolean(
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
@@ -260,78 +293,135 @@ export async function POST(request: Request) {
     );
   }
 
+  // Capture before state for audit log
+  const { data: beforeData } = await supabase
+    .from("payment_merchant_credentials")
+    .select("*")
+    .eq("provider", provider)
+    .maybeSingle();
+
+  let result: Response;
+
   if (provider === "bakong") {
-    return saveBakongConfig(supabase, input, env);
-  }
+    result = await saveBakongConfig(supabase, input, env, auth, request);
+  } else {
+    // ABA PayWay path - extract before state
+    const before = beforeData ? {
+      provider: beforeData.provider,
+      env: beforeData.env,
+      merchantIdLast4: last4(beforeData.merchant_id),
+      apiKeyLast4: last4(beforeData.api_key),
+      secretSet: Boolean(beforeData.secret_key),
+      callbackUrl: beforeData.callback_url || "",
+      status: beforeData.status,
+      validatedAt: beforeData.validated_at ?? null,
+    } : null;
 
-  const merchantId =
-    typeof input.merchantId === "string" ? input.merchantId.trim() : "";
-  const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-  const secretKey =
-    typeof input.secretKey === "string" ? input.secretKey.trim() : "";
-  const callbackUrl =
-    typeof input.callbackUrl === "string" ? input.callbackUrl.trim() : "";
+    const merchantId =
+      typeof input.merchantId === "string" ? input.merchantId.trim() : "";
+    const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
+    const secretKey =
+      typeof input.secretKey === "string" ? input.secretKey.trim() : "";
+    const callbackUrl =
+      typeof input.callbackUrl === "string" ? input.callbackUrl.trim() : "";
 
-  if (!merchantId || !apiKey || !secretKey) {
-    return json(
-      { error: "Merchant ID, API Key and Secret Key are required." },
-      400,
-    );
-  }
-  if (merchantId.length > 40 || apiKey.length > 128 || secretKey.length > 128) {
-    return json({ error: "One of the credential fields is too long." }, 400);
-  }
-  if (callbackUrl && !/^https?:\/\/\S+$/.test(callbackUrl)) {
-    return json({ error: "Callback URL does not look valid." }, 400);
-  }
+    if (!merchantId || !apiKey || !secretKey) {
+      return json(
+        { error: "Merchant ID, API Key and Secret Key are required." },
+        400,
+      );
+    }
+    if (merchantId.length > 40 || apiKey.length > 128 || secretKey.length > 128) {
+      return json({ error: "One of the credential fields is too long." }, 400);
+    }
+    if (callbackUrl && !/^https?:\/\/\S+$/.test(callbackUrl)) {
+      return json({ error: "Callback URL does not look valid." }, 400);
+    }
 
-  const { error: upsertError } = await supabase
-    .from("payment_merchant_credentials")
-    .upsert(
-      {
-        provider: "aba_payway",
-        env,
-        merchant_id: merchantId,
-        api_key: apiKey,
-        secret_key: secretKey,
-        callback_url: callbackUrl || null,
-        status: "unconfigured",
+    const { error: upsertError } = await supabase
+      .from("payment_merchant_credentials")
+      .upsert(
+        {
+          provider: "aba_payway",
+          env,
+          merchant_id: merchantId,
+          api_key: apiKey,
+          secret_key: secretKey,
+          callback_url: callbackUrl || null,
+          status: "unconfigured",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "provider" },
+      );
+    if (upsertError) return json({ error: upsertError.message }, 500);
+
+    const config: AbaConfig = {
+      merchantId,
+      apiKey,
+      secretKey,
+      baseUrl:
+        env === "production"
+          ? "https://checkout.payway.com.kh"
+          : "https://checkout-sandbox.payway.com.kh",
+    };
+    const probe = await probeAbaMerchant(config, callbackUrl);
+    const status = probe.ok ? "ok" : "failed";
+
+    const { error: statusError } = await supabase
+      .from("payment_merchant_credentials")
+      .update({
+        status,
+        validated_at: probe.ok ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "provider" },
-    );
-  if (upsertError) return json({ error: upsertError.message }, 500);
+      })
+      .eq("provider", "aba_payway");
+    if (statusError) return json({ error: statusError.message }, 500);
 
-  const config: AbaConfig = {
-    merchantId,
-    apiKey,
-    secretKey,
-    baseUrl:
-      env === "production"
-        ? "https://checkout.payway.com.kh"
-        : "https://checkout-sandbox.payway.com.kh",
-  };
-  const probe = await probeAbaMerchant(config, callbackUrl);
-  const status = probe.ok ? "ok" : "failed";
+    // Apply immediately: the very next checkout uses these credentials.
+    setAbaMerchantConfigOverride(config);
 
-  const { error: statusError } = await supabase
-    .from("payment_merchant_credentials")
-    .update({
+    // Capture after state for audit log
+    const { data: afterData } = await supabase
+      .from("payment_merchant_credentials")
+      .select("*")
+      .eq("provider", "aba_payway")
+      .maybeSingle();
+
+    const after = afterData ? {
+      provider: afterData.provider,
+      env: afterData.env,
+      merchantIdLast4: last4(afterData.merchant_id),
+      apiKeyLast4: last4(afterData.api_key),
+      secretSet: Boolean(afterData.secret_key),
+      callbackUrl: afterData.callback_url || "",
+      status: afterData.status,
+      validatedAt: afterData.validated_at ?? null,
+    } : null;
+
+    // Audit log the update
+    await auditLog(supabase, {
+      actorId: auth.userId,
+      actorRole: auth.platformRole,
+      action: "update",
+      resourceType: "payment_config",
+      resourceId: "aba_payway",
+      before,
+      after,
+      ipAddress: getClientIp(request),
+      userAgent: getUserAgent(request),
+    });
+
+    return json({
+      saved: true,
       status,
-      validated_at: probe.ok ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("provider", "aba_payway");
-  if (statusError) return json({ error: statusError.message }, 500);
+      detail: probe.message,
+      merchantIdLast4: last4(merchantId),
+      apiKeyLast4: last4(apiKey),
+    });
+  }
 
-  // Apply immediately: the very next checkout uses these credentials.
-  setAbaMerchantConfigOverride(config);
-
-  return json({
-    saved: true,
-    status,
-    detail: probe.message,
-    merchantIdLast4: last4(merchantId),
-    apiKeyLast4: last4(apiKey),
-  });
+  // For Bakong path, we need to capture before/after and audit log
+  // But saveBakongConfig returns a Response directly, so we need to refactor
+  // For now, we'll add audit logging inside saveBakongConfig
+  return result;
 }

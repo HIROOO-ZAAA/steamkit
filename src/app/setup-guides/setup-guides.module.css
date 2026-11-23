@@ -1,0 +1,4763 @@
+/* Setup Guides: public, route-scoped documentation surface. */
+
+.shell {
+  --guide-card-radius: 12px;
+
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  font-family: "Inter", sans-serif;
+  color: var(--dash-text);
+}
+
+.container {
+  width: min(1180px, calc(100% - clamp(2rem, 6vw, 5rem)));
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.skipLink {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 300;
+  padding: 10px 14px;
+  border: 1px solid var(--dash-accent);
+  border-radius: 8px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  font: 700 0.78rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transform: translateY(-160%);
+  transition: transform 160ms ease;
+}
+
+.skipLink:focus-visible {
+  transform: translateY(0);
+}
+
+/* Header and footer */
+
+.siteHeader {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--dash-border);
+  background: var(--dash-nav-bg);
+  background: color-mix(in srgb, var(--dash-nav-bg) 90%, transparent);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.headerInner {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  gap: 18px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+  color: var(--dash-text);
+  text-decoration: none;
+}
+
+.brandMark,
+.footerMark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 9px;
+  background: linear-gradient(145deg, var(--dash-action-soft), transparent 72%);
+  color: var(--dash-accent-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.brandMark {
+  width: 36px;
+  height: 36px;
+}
+
+.brandMark svg,
+.footerMark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.brandCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brandName {
+  color: var(--dash-text);
+  font: 700 0.87rem "Rajdhani", sans-serif;
+  letter-spacing: 0.18em;
+  line-height: 1;
+}
+
+.brandMeta {
+  color: var(--dash-text-muted);
+  font: 600 0.61rem "Rajdhani", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.headerNav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: clamp(16px, 3vw, 34px);
+}
+
+.headerNav a {
+  color: var(--dash-text-secondary);
+  font: 600 0.74rem "Rajdhani", sans-serif;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.headerNav a:hover {
+  color: var(--dash-accent-strong);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.headerSignIn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  color: var(--dash-text-secondary);
+  font: 700 0.75rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.headerSignIn:hover {
+  border-color: var(--dash-accent);
+  color: var(--dash-accent-strong);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.siteFooter {
+  border-top: 1px solid var(--dash-border);
+  background: color-mix(in srgb, var(--dash-nav-bg) 88%, transparent);
+}
+
+.footerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 28px 20px;
+}
+
+.footerBrand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.footerMark {
+  width: 34px;
+  height: 34px;
+}
+
+.footerName {
+  margin: 0 0 3px;
+  color: var(--dash-text);
+  font: 700 0.8rem "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.footerTagline {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.77rem;
+}
+
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.footerNav a {
+  color: var(--dash-text-secondary);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.footerNav a:hover {
+  color: var(--dash-accent-strong);
+}
+
+.footerBottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  padding-block: 14px 20px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.footerBottom p {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font: 600 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Directory hero */
+
+.pageWrap {
+  padding-block: clamp(2rem, 5vw, 3.5rem) clamp(3.5rem, 7vw, 5.5rem);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(250px, 0.65fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: end;
+  padding-bottom: clamp(24px, 4vw, 36px);
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.heroCopy {
+  min-width: 0;
+}
+
+.eyebrow,
+.sectionEyebrow,
+.featuredEyebrow {
+  margin: 0;
+  color: var(--dash-accent-strong);
+  font: 700 0.7rem "Rajdhani", sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 10px 0 14px;
+  color: var(--dash-text);
+  font: 700 clamp(2.7rem, 6.5vw, 4.5rem) / 0.96 "Rajdhani", sans-serif;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+
+.heroDescription {
+  max-width: 620px;
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: clamp(0.98rem, 2vw, 1.08rem);
+  line-height: 1.65;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  color: var(--dash-text-muted);
+  font: 600 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.heroMeta span[aria-hidden="true"] {
+  color: var(--dash-border-strong);
+}
+
+.heroNote {
+  align-self: end;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--dash-border);
+  border-left: 2px solid var(--dash-accent);
+  border-radius: 10px;
+  background: var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.heroNoteLabel {
+  margin: 0 0 8px;
+  color: var(--dash-accent-strong);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.heroNote p:last-child {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.62;
+}
+
+/* Search and filters */
+
+.searchPanel {
+  margin-top: 24px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.searchTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.searchField {
+  min-width: 0;
+}
+
+.searchField label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--dash-text-secondary);
+  font: 700 0.69rem "Rajdhani", sans-serif;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.searchInputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--dash-surface-raised);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.searchInputWrap:focus-within {
+  border-color: var(--dash-accent);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  color: var(--dash-text-muted);
+  pointer-events: none;
+}
+
+.searchInputWrap input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dash-text);
+  font: 500 0.94rem "Inter", sans-serif;
+}
+
+.searchInputWrap input::placeholder {
+  color: var(--dash-text-muted);
+  opacity: 1;
+}
+
+.searchInputWrap input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.clearSearch {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+}
+
+.clearSearch:hover {
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.resultCount {
+  margin: 0 0 10px;
+  color: var(--dash-text-muted);
+  font: 700 0.71rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.searchStatus {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.resetInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dash-accent-strong);
+  font: 600 0.69rem "Inter", sans-serif;
+  cursor: pointer;
+}
+
+.resetInline:hover {
+  color: var(--dash-text);
+}
+
+.filterHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  color: var(--dash-text-muted);
+  font: 700 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.filterList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.filterButton {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+  font: 600 0.75rem "Inter", sans-serif;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.filterButton:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+
+.filterButton[aria-pressed="true"] {
+  border-color: var(--dash-accent);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+/* Featured guide */
+
+.featured {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(200px, 0.6fr);
+  gap: 20px;
+  margin-top: 26px;
+  overflow: hidden;
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(520px 260px at 92% 18%, var(--dash-action-soft), transparent 70%),
+    var(--dash-surface);
+  box-shadow: var(--dash-shadow-md);
+}
+
+.featured::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(var(--dash-accent), var(--dash-primary));
+  content: "";
+}
+
+.featuredCopy {
+  min-width: 0;
+  padding: clamp(24px, 4vw, 40px);
+}
+
+.featured h2 {
+  max-width: 690px;
+  margin: 9px 0 12px;
+  color: var(--dash-text);
+  font: 700 clamp(1.6rem, 3.4vw, 2.25rem) / 1.08 "Rajdhani", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.featuredDescription {
+  max-width: 660px;
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.featuredMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--dash-text-muted);
+  font: 600 0.69rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.featuredMeta span[aria-hidden="true"] {
+  color: var(--dash-border-strong);
+}
+
+.primaryAction,
+.secondaryAction,
+.asideAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 8px;
+  font: 700 0.76rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.primaryAction {
+  margin-top: 22px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.primaryAction:hover {
+  border-color: var(--dash-action-hover);
+  background: var(--dash-action-hover);
+}
+
+.featuredVisual {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 238px;
+  place-items: center;
+  padding: 24px;
+}
+
+.featuredVisual::before {
+  position: absolute;
+  width: min(230px, 82%);
+  aspect-ratio: 1;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  content: "";
+}
+
+.featuredOrbit {
+  position: absolute;
+  width: min(166px, 60%);
+  aspect-ratio: 1;
+  border: 1px dashed var(--dash-border-strong);
+  border-radius: 50%;
+}
+
+.featuredIcon {
+  position: relative;
+  display: grid;
+  width: 84px;
+  height: 84px;
+  place-items: center;
+  border: 1px solid var(--dash-accent);
+  border-radius: 22px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-accent-strong);
+  box-shadow:
+    0 0 0 8px var(--dash-accent-soft),
+    var(--dash-shadow-md);
+}
+
+.featuredTag {
+  position: absolute;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 6px 9px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font: 600 0.64rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Directory cards */
+
+.directory {
+  margin-top: clamp(32px, 5vw, 46px);
+}
+
+.directoryHeader,
+.relatedHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.directoryHeader h2,
+.relatedHeader h2 {
+  margin: 5px 0 0;
+  color: var(--dash-text);
+  font: 700 clamp(1.5rem, 3vw, 1.9rem) / 1.1 "Rajdhani", sans-serif;
+}
+
+.activeFilter {
+  margin: 0 0 3px;
+  padding: 6px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  color: var(--dash-text-muted);
+  font: 600 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.guideGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guideGrid > li {
+  display: flex;
+  min-width: 0;
+}
+
+.guideCard {
+  --card-accent: var(--dash-accent);
+  --card-soft: var(--dash-accent-soft);
+
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  padding: 19px;
+  border: 1px solid var(--dash-border);
+  border-radius: var(--guide-card-radius);
+  background: var(--dash-surface);
+  color: var(--dash-text);
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.guideCard[data-category="obs"] {
+  --card-accent: var(--dash-blue);
+  --card-soft: var(--dash-blue-soft);
+}
+
+.guideCard[data-category="donations"] {
+  --card-accent: var(--dash-primary);
+  --card-soft: var(--dash-action-soft);
+}
+
+.guideCard[data-category="alerts"] {
+  --card-accent: var(--dash-accent);
+  --card-soft: var(--dash-accent-soft);
+}
+
+.guideCard[data-category="creator-tools"] {
+  --card-accent: var(--dash-warning);
+  --card-soft: var(--dash-warning-bg);
+}
+
+.guideCard[data-category="integrations"] {
+  --card-accent: var(--dash-info);
+  --card-soft: var(--dash-info-bg);
+}
+
+.guideCard:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardIcon {
+  display: grid;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--card-soft);
+  color: var(--card-accent);
+}
+
+.cardCategory {
+  padding-top: 4px;
+  color: var(--dash-text-muted);
+  font: 600 0.61rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.cardTitle {
+  display: block;
+  margin: 15px 0 0;
+  color: var(--dash-text);
+  font: 700 1.2rem / 1.24 "Rajdhani", sans-serif;
+  letter-spacing: 0.005em;
+  overflow-wrap: anywhere;
+}
+
+.cardDescription {
+  display: block;
+  flex: 1;
+  margin: 8px 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.58;
+}
+
+.cardFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px 14px;
+  margin-top: 17px;
+  padding-top: 13px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.cardMeta {
+  color: var(--dash-text-muted);
+  font: 600 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.readAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--card-accent);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.emptyState {
+  display: grid;
+  justify-items: center;
+  margin-top: 20px;
+  padding: clamp(28px, 5vw, 46px) 20px;
+  border: 1px dashed var(--dash-border-strong);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  text-align: center;
+}
+
+.emptyIcon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  margin-bottom: 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-muted);
+}
+
+.emptyState h3 {
+  margin: 0;
+  color: var(--dash-text);
+  font: 700 1.3rem "Rajdhani", sans-serif;
+}
+
+.emptyState p {
+  max-width: 420px;
+  margin: 7px 0 16px;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.secondaryAction {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--dash-border-strong);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  cursor: pointer;
+}
+
+.secondaryAction:hover {
+  border-color: var(--dash-accent);
+  color: var(--dash-accent-strong);
+}
+
+/* Guide detail */
+
+.guidePageWrap {
+  padding-block: clamp(1.5rem, 4vw, 2.6rem) clamp(3.5rem, 7vw, 5.5rem);
+}
+
+.breadcrumbs {
+  margin-bottom: 24px;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.77rem;
+  list-style: none;
+}
+
+.breadcrumbs a {
+  color: var(--dash-text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover {
+  color: var(--dash-accent-strong);
+}
+
+.breadcrumbs [aria-current="page"] {
+  color: var(--dash-text);
+  overflow-wrap: anywhere;
+}
+
+.guideHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: clamp(24px, 4vw, 32px);
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.guideHeroCopy {
+  min-width: 0;
+  max-width: 830px;
+}
+
+.guideCategoryRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.guideCategoryIcon,
+.relatedIcon {
+  --card-accent: var(--dash-accent);
+  --card-soft: var(--dash-accent-soft);
+
+  display: grid;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--dash-border);
+  background: var(--card-soft);
+  color: var(--card-accent);
+}
+
+.guideCategoryIcon[data-category="obs"],
+.relatedIcon[data-category="obs"] {
+  --card-accent: var(--dash-blue);
+  --card-soft: var(--dash-blue-soft);
+}
+
+.guideCategoryIcon[data-category="donations"],
+.relatedIcon[data-category="donations"] {
+  --card-accent: var(--dash-primary);
+  --card-soft: var(--dash-action-soft);
+}
+
+.guideCategoryIcon[data-category="alerts"],
+.relatedIcon[data-category="alerts"] {
+  --card-accent: var(--dash-accent);
+  --card-soft: var(--dash-accent-soft);
+}
+
+.guideCategoryIcon[data-category="creator-tools"],
+.relatedIcon[data-category="creator-tools"] {
+  --card-accent: var(--dash-warning);
+  --card-soft: var(--dash-warning-bg);
+}
+
+.guideCategoryIcon[data-category="integrations"],
+.relatedIcon[data-category="integrations"] {
+  --card-accent: var(--dash-info);
+  --card-soft: var(--dash-info-bg);
+}
+
+.guideCategoryIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.guideCategoryName {
+  color: var(--dash-accent-strong);
+  font: 700 0.7rem "Rajdhani", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.guideHero h1 {
+  max-width: 900px;
+  margin: 14px 0 13px;
+  color: var(--dash-text);
+  font: 700 clamp(2.1rem, 5vw, 3.55rem) / 1.04 "Rajdhani", sans-serif;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.guideDescription {
+  max-width: 760px;
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: clamp(0.94rem, 2vw, 1.02rem);
+  line-height: 1.68;
+}
+
+.guideMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 17px;
+  color: var(--dash-text-muted);
+  font: 600 0.69rem "Rajdhani", sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.guideMetaRow span[aria-hidden="true"] {
+  color: var(--dash-border-strong);
+}
+
+.backToDirectory {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 7px;
+  color: var(--dash-text-secondary);
+  font: 600 0.74rem "Inter", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.backToDirectory:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+
+.prerequisiteCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  max-width: 900px;
+  margin: 24px 0 30px;
+  padding: 17px 19px;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+}
+
+.prerequisiteIcon {
+  display: grid;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-accent-strong);
+}
+
+.prerequisiteCard h2 {
+  margin: 1px 0 7px;
+  color: var(--dash-text);
+  font: 700 0.85rem "Rajdhani", sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.prerequisiteCard ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  list-style: none;
+}
+
+.prerequisiteCard li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.prerequisiteCard li::before {
+  position: absolute;
+  top: 0.65em;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  content: "";
+}
+
+.guideLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: clamp(28px, 5vw, 56px);
+  align-items: start;
+}
+
+.guideArticle {
+  min-width: 0;
+}
+
+.articleSectionHeader {
+  margin-bottom: 16px;
+}
+
+.articleSectionHeader h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0 0;
+  color: var(--dash-text);
+  font: 700 clamp(1.5rem, 3vw, 1.85rem) / 1.15 "Rajdhani", sans-serif;
+}
+
+.flowCard {
+  margin-bottom: 32px;
+  padding: 18px 20px;
+  border: 1px solid var(--dash-border);
+  border-radius: 11px;
+  background: var(--dash-surface);
+}
+
+.flowCard h2 {
+  margin: 5px 0 0;
+  color: var(--dash-text);
+  font: 700 1.18rem "Rajdhani", sans-serif;
+}
+
+.flowList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+  margin: 15px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowList li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 7px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.flowNumber {
+  color: var(--dash-accent-strong);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.stepList {
+  display: grid;
+  gap: 0;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 18px;
+  padding-bottom: 34px;
+  scroll-margin-top: 90px;
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+.stepRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.stepNumber {
+  display: grid;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--dash-accent);
+  border-radius: 10px;
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+  font: 700 0.8rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+}
+
+.stepLine {
+  width: 1px;
+  flex: 1;
+  min-height: 24px;
+  margin-top: 9px;
+  background: var(--dash-border);
+}
+
+.step:last-child .stepLine {
+  display: none;
+}
+
+.stepContent {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.stepContent h3 {
+  margin: 0 0 12px;
+  color: var(--dash-text);
+  font: 700 clamp(1.2rem, 2.4vw, 1.38rem) / 1.28 "Rajdhani", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.stepKicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--dash-accent-strong);
+  font: 700 0.64rem "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.stepContent p {
+  margin: 0 0 12px;
+  color: var(--dash-text-secondary);
+  font-size: 0.91rem;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
+.stepContent p:last-child {
+  margin-bottom: 0;
+}
+
+.stepContent strong {
+  color: var(--dash-text);
+}
+
+.pointList {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  list-style: none;
+}
+
+.pointList li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.pointList li::before {
+  position: absolute;
+  top: 0.65em;
+  left: 1px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  content: "";
+}
+
+.warning {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 15px 0;
+  padding: 13px 14px;
+  border: 1px solid var(--dash-warning-border);
+  border-left: 2px solid var(--dash-warning);
+  border-radius: 8px;
+  background: var(--dash-warning-bg);
+}
+
+.warningIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--dash-warning);
+}
+
+.warning strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--dash-warning);
+  font: 700 0.79rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.warning p {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.58;
+}
+
+.tip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 14px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--dash-info-border);
+  border-radius: 8px;
+  background: var(--dash-info-bg);
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.58;
+}
+
+.tip > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--dash-info);
+}
+
+.details {
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: var(--dash-surface-raised);
+}
+
+.details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  color: var(--dash-text-secondary);
+  font: 600 0.78rem "Inter", sans-serif;
+  cursor: pointer;
+  list-style: none;
+}
+
+.details summary::-webkit-details-marker {
+  display: none;
+}
+
+.details summary:hover {
+  color: var(--dash-text);
+}
+
+.detailsChevron {
+  flex: none;
+  transition: transform 150ms ease;
+}
+
+.details[open] .detailsChevron {
+  transform: rotate(180deg);
+}
+
+.detailsBody {
+  padding: 0 13px 13px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.detailsBody p {
+  margin: 11px 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.65;
+}
+
+.stepLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 15px;
+}
+
+.stepLinks a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--dash-border);
+  border-radius: 7px;
+  background: var(--dash-surface);
+  color: var(--dash-accent-strong);
+  font: 600 0.72rem "Inter", sans-serif;
+  text-decoration: none;
+}
+
+.stepLinks a:hover {
+  border-color: var(--dash-accent);
+  background: var(--dash-surface-raised);
+}
+
+.troubleshooting {
+  margin-top: 20px;
+  padding-top: 32px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.troubleshootingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.troubleshootingItem {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--dash-surface);
+}
+
+.troubleshootingItem h3 {
+  margin: 0 0 6px;
+  color: var(--dash-text);
+  font: 700 0.93rem "Rajdhani", sans-serif;
+  line-height: 1.3;
+}
+
+.troubleshootingItem p {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.related {
+  margin-top: 38px;
+  padding-top: 30px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.relatedHeader h2 {
+  font-size: clamp(1.35rem, 3vw, 1.65rem);
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dash-accent-strong);
+  font: 600 0.76rem "Inter", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.textLink:hover {
+  color: var(--dash-text);
+}
+
+.relatedGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 17px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relatedGrid li {
+  min-width: 0;
+}
+
+.relatedCard {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--dash-surface);
+  color: var(--dash-text);
+  text-decoration: none;
+}
+
+.relatedCard:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+}
+
+.relatedIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+}
+
+.relatedCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.relatedCategory {
+  color: var(--dash-text-muted);
+  font: 600 0.6rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.relatedTitle {
+  color: var(--dash-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.relatedArrow {
+  flex: none;
+  margin-left: auto;
+  color: var(--dash-text-muted);
+}
+
+.relatedCard:hover .relatedArrow {
+  color: var(--dash-accent-strong);
+}
+
+.bottomBackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 30px;
+  color: var(--dash-accent-strong);
+  font: 600 0.8rem "Inter", sans-serif;
+  text-decoration: none;
+}
+
+.bottomBackLink:hover {
+  color: var(--dash-text);
+}
+
+.guideAside {
+  position: sticky;
+  top: 92px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stepNav,
+.asideCard {
+  padding: 17px;
+  border: 1px solid var(--dash-border);
+  border-radius: 11px;
+  background: var(--dash-surface);
+}
+
+.asideTitle {
+  margin: 0 0 10px;
+  color: var(--dash-text);
+  font: 700 0.69rem "Rajdhani", sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stepNav ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepNav li + li {
+  border-top: 1px solid var(--dash-border);
+}
+
+.stepNav a {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px;
+  padding: 8px 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.77rem;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.stepNav a span {
+  color: var(--dash-text-muted);
+  font: 700 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.stepNav a:hover {
+  color: var(--dash-accent-strong);
+}
+
+.asideCard {
+  background:
+    linear-gradient(145deg, var(--dash-action-soft), transparent 78%),
+    var(--dash-surface);
+}
+
+.asideCard p:not(.asideTitle) {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.58;
+}
+
+.asideAction {
+  margin-top: 13px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.asideAction:hover {
+  border-color: var(--dash-action-hover);
+  background: var(--dash-action-hover);
+}
+
+.asideBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dash-text-muted);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.asideBack:hover {
+  color: var(--dash-accent-strong);
+}
+
+/* Not found */
+
+.notFoundWrap {
+  display: grid;
+  min-height: 55vh;
+  place-items: center;
+  padding-block: 4rem;
+}
+
+.notFoundCard {
+  max-width: 520px;
+  padding: clamp(26px, 5vw, 38px);
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: var(--dash-surface);
+  text-align: center;
+}
+
+.notFoundCard h1 {
+  margin: 12px 0 10px;
+  font: 700 clamp(1.9rem, 5vw, 2.7rem) / 1.05 "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.notFoundCard p {
+  margin: 0 0 18px;
+  color: var(--dash-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* Responsive layout */
+
+@media (max-width: 1000px) {
+  .guideGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .guideLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guideAside {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .asideBack {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .heroNote {
+    max-width: 620px;
+  }
+
+  .featured {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .featuredVisual {
+    min-height: 170px;
+    border-top: 1px solid var(--dash-border);
+  }
+
+  .featuredVisual::before {
+    width: 150px;
+  }
+
+  .featuredOrbit {
+    width: 116px;
+  }
+
+  .featuredIcon {
+    width: 66px;
+    height: 66px;
+    border-radius: 17px;
+  }
+
+  .featuredTag {
+    bottom: 12px;
+  }
+
+  .headerNav {
+    display: none;
+  }
+
+  .searchTop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .resultCount {
+    margin: 0;
+  }
+
+  .searchStatus {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .guideHero {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .backToDirectory {
+    margin-top: 0;
+  }
+
+  .troubleshootingGrid,
+  .relatedGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guideAside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .asideBack {
+    grid-column: auto;
+  }
+
+  .guideGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .footerInner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .footerNav {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .container {
+    width: calc(100% - 2rem);
+  }
+
+  .headerInner {
+    gap: 10px;
+  }
+
+  .headerSignIn {
+    display: none;
+  }
+
+  .brandMeta {
+    display: none;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.45rem, 15vw, 3.3rem);
+  }
+
+  .featuredVisual {
+    display: none;
+  }
+
+  .featuredCopy {
+    padding: 22px 20px;
+  }
+
+  .featured h2 {
+    font-size: 1.55rem;
+  }
+
+  .searchPanel {
+    padding: 15px;
+  }
+
+  .searchInputWrap input {
+    font-size: 0.9rem;
+  }
+
+  .filterList {
+    gap: 6px;
+  }
+
+  .filterButton {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.71rem;
+  }
+
+  .directoryHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .activeFilter {
+    margin: 0;
+  }
+
+  .step {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+    padding-bottom: 28px;
+  }
+
+  .stepNumber {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+  }
+
+  .stepLine {
+    min-height: 18px;
+  }
+
+  .stepContent h3 {
+    font-size: 1.16rem;
+  }
+
+  .guideHero h1 {
+    font-size: clamp(1.9rem, 11vw, 2.5rem);
+  }
+
+  .prerequisiteCard {
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .prerequisiteIcon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .flowList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .relatedHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .footerBottom {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .hero h1 {
+    font-size: 2.35rem;
+  }
+
+  .featuredCopy {
+    padding: 20px 16px;
+  }
+
+  .step {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stepRail {
+    display: none;
+  }
+
+  .stepContent h3 {
+    padding-left: 0;
+  }
+
+  .flowList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skipLink,
+  .guideCard,
+  .filterButton,
+  .detailsChevron,
+  .searchInputWrap {
+    transition: none;
+  }
+}
+
+/* Interactive setup guide */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.heroActions .primaryAction {
+  margin-top: 0;
+}
+
+.heroNoteStats {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.heroNoteStats span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dash-text-secondary);
+  font: 600 0.67rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.heroNoteStats svg {
+  flex: none;
+  color: var(--dash-accent);
+}
+
+.selectorIntro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: clamp(26px, 4vw, 38px) 17px;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.selectorIntro h2 {
+  margin: 5px 0 7px;
+  color: var(--dash-text);
+  font: 700 clamp(1.5rem, 3vw, 1.95rem) / 1.1 "Rajdhani", sans-serif;
+}
+
+.selectorIntro p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.65;
+}
+
+.selectorCount {
+  flex: none;
+  margin: 0 0 2px;
+  padding: 7px 11px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  color: var(--dash-text-muted);
+  font: 700 0.66rem "Rajdhani", sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.guideWorkspace {
+  display: grid;
+  grid-template-columns: 304px minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+  padding-top: 18px;
+}
+
+.pickerColumn {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 108px);
+  min-width: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-margin-top: 86px;
+  scrollbar-color: var(--dash-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.pickerToolbar {
+  display: grid;
+  gap: 5px;
+}
+
+.pickerSearchLabel {
+  color: var(--dash-text-secondary);
+  font: 700 0.64rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pickerSearchField {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 9px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: var(--dash-surface);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.pickerSearchField:focus-within {
+  border-color: var(--dash-accent);
+  background: var(--dash-surface-raised);
+}
+
+.pickerSearchField > svg {
+  flex: none;
+  color: var(--dash-text-muted);
+}
+
+.pickerSearchField input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dash-text);
+  font: 500 0.82rem "Inter", sans-serif;
+}
+
+.pickerSearchField input::placeholder {
+  color: var(--dash-text-muted);
+}
+
+.pickerClear {
+  display: grid;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+}
+
+.pickerClear:hover {
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.categoryFilters {
+  display: flex;
+  gap: 6px;
+  padding-block: 10px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.categoryFilters::-webkit-scrollbar {
+  display: none;
+}
+
+.categoryFilter {
+  flex: none;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+  font: 700 0.61rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.categoryFilter:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+
+.categoryFilter[aria-pressed="true"] {
+  border-color: var(--dash-accent);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.pickerList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 0 3px;
+  list-style: none;
+}
+
+.pickerList > li {
+  min-width: 0;
+}
+
+.pickerCard {
+  --picker-accent: var(--dash-accent);
+  --picker-soft: var(--dash-accent-soft);
+
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 11px;
+  background: var(--dash-surface);
+  color: var(--dash-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.pickerCard[data-category="obs"] {
+  --picker-accent: var(--dash-blue);
+  --picker-soft: var(--dash-blue-soft);
+}
+
+.pickerCard[data-category="donations"] {
+  --picker-accent: var(--dash-primary);
+  --picker-soft: var(--dash-action-soft);
+}
+
+.pickerCard[data-category="creator-tools"] {
+  --picker-accent: var(--dash-warning);
+  --picker-soft: var(--dash-warning-bg);
+}
+
+.pickerCard[data-category="integrations"] {
+  --picker-accent: var(--dash-info);
+  --picker-soft: var(--dash-info-bg);
+}
+
+.pickerCard:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.pickerCard[aria-pressed="true"] {
+  border-color: var(--picker-accent);
+  background: color-mix(in srgb, var(--picker-soft) 68%, var(--dash-surface));
+  box-shadow: inset 3px 0 0 var(--picker-accent);
+}
+
+.pickerCardTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pickerIcon {
+  display: grid;
+  flex: none;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--picker-soft);
+  color: var(--picker-accent);
+}
+
+.pickerCategory {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font: 700 0.58rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pickerSelected {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  color: var(--picker-accent);
+  font: 700 0.56rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pickerTitle {
+  color: var(--dash-text);
+  font: 700 0.98rem "Rajdhani", sans-serif;
+  line-height: 1.2;
+}
+
+.pickerDescription {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pickerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dash-border);
+  color: var(--dash-text-muted);
+  font: 700 0.57rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pickerMeta span[aria-hidden="true"] {
+  color: var(--dash-border-strong);
+}
+
+.pickerEmpty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 18px 14px;
+  border: 1px dashed var(--dash-border-strong);
+  border-radius: 10px;
+  color: var(--dash-text-secondary);
+}
+
+.pickerEmpty h3 {
+  margin: 2px 0 0;
+  color: var(--dash-text);
+  font: 700 0.98rem "Rajdhani", sans-serif;
+}
+
+.pickerEmpty p {
+  margin: 0 0 5px;
+  color: var(--dash-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.pickerFootnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 2px 2px;
+  color: var(--dash-text-muted);
+  font-size: 0.66rem;
+  line-height: 1.55;
+}
+
+.pickerFootnote svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--dash-accent);
+}
+
+.walkthroughSection {
+  min-width: 0;
+  padding: clamp(14px, 2vw, 22px);
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, var(--dash-accent-soft), transparent 28%),
+    var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+  scroll-margin-top: 88px;
+}
+
+.walkthroughSection:focus {
+  outline: none;
+}
+
+.walkthroughSection:focus-visible {
+  outline: 2px solid var(--dash-accent);
+  outline-offset: 3px;
+}
+
+.walkthroughTopbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.backToPicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dash-accent-strong);
+  cursor: pointer;
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.backToPicker:hover {
+  color: var(--dash-text);
+}
+
+.availabilityBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--dash-success-border, var(--dash-border));
+  border-radius: 999px;
+  color: var(--dash-accent-strong);
+  font: 700 0.58rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.availabilityBadge > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.walkthroughHeader {
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.walkthroughTitleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+}
+
+.walkthroughTitleRow h2 {
+  margin: 4px 0 0;
+  color: var(--dash-text);
+  font: 700 clamp(1.55rem, 3.4vw, 2.15rem) / 1.08 "Rajdhani", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.walkthroughIntro {
+  max-width: 790px;
+  margin: 12px 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.65;
+}
+
+.walkthroughMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 14px;
+  margin-top: 12px;
+  color: var(--dash-text-muted);
+  font: 700 0.63rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.walkthroughMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.walkthroughMeta svg {
+  color: var(--dash-accent);
+}
+
+.prerequisitePanel,
+.troubleshootingPanel {
+  margin-top: 16px;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  overflow: hidden;
+}
+
+.prerequisitePanel summary,
+.troubleshootingPanel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 41px;
+  padding: 9px 12px;
+  color: var(--dash-text-secondary);
+  cursor: pointer;
+  font: 700 0.72rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.prerequisitePanel summary::-webkit-details-marker,
+.troubleshootingPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.prerequisitePanel summary:hover,
+.troubleshootingPanel summary:hover {
+  color: var(--dash-text);
+}
+
+.prerequisitePanel summary > span,
+.troubleshootingPanel summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.prerequisitePanel summary > span:last-child,
+.troubleshootingPanel summary > span:last-child {
+  color: var(--dash-text-muted);
+  font-size: 0.61rem;
+  white-space: nowrap;
+}
+
+.prerequisitePanel summary svg,
+.troubleshootingPanel summary svg {
+  flex: none;
+  color: var(--dash-accent);
+}
+
+.prerequisitePanel[open] .detailsChevron,
+.troubleshootingPanel[open] .detailsChevron {
+  transform: rotate(180deg);
+}
+
+.prerequisitePanel ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 14px;
+  margin: 0;
+  padding: 0 13px 13px;
+  list-style: none;
+}
+
+.prerequisitePanel li {
+  position: relative;
+  padding-left: 15px;
+  color: var(--dash-text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.prerequisitePanel li::before {
+  position: absolute;
+  top: 0.53em;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  content: "";
+}
+
+.walkthroughBody {
+  display: grid;
+  gap: 17px;
+  min-width: 0;
+  padding-top: 17px;
+}
+
+.visualColumn {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recordingNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  padding: 0 3px;
+  color: var(--dash-text-muted);
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
+.recordingNote span {
+  color: var(--dash-text-secondary);
+  font: 700 0.61rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.recordingNote p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+
+.stepArticle {
+  min-width: 0;
+  padding: 1px 2px 4px;
+}
+
+.stepKickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stepCount {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--dash-accent);
+  border-radius: 999px;
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+  font: 700 0.61rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stepReadTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dash-text-muted);
+  font: 700 0.6rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stepArticle h3 {
+  margin: 9px 0 12px;
+  color: var(--dash-text);
+  font: 700 clamp(1.3rem, 2.8vw, 1.62rem) / 1.16 "Rajdhani", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.stepBodyText {
+  margin: 0 0 11px;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.72;
+}
+
+.stepPointList {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.stepPointList li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--dash-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.stepPointList li::before {
+  position: absolute;
+  top: 0.62em;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  content: "";
+}
+
+.stepWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 13px 0;
+  padding: 10px 11px;
+  border: 1px solid var(--dash-warning-border);
+  border-radius: 8px;
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+}
+
+.stepWarning > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.stepWarning strong {
+  display: block;
+  margin-bottom: 3px;
+  font: 700 0.76rem "Rajdhani", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.stepWarning p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.stepTip {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0;
+  padding: 9px 10px;
+  border-left: 2px solid var(--dash-accent);
+  border-radius: 0 7px 7px 0;
+  background: var(--dash-accent-soft);
+  color: var(--dash-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.stepTip > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--dash-accent-strong);
+}
+
+.stepTip strong {
+  color: var(--dash-text);
+}
+
+.stepDetails {
+  margin: 12px 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: var(--dash-surface);
+  overflow: hidden;
+}
+
+.stepDetails summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  color: var(--dash-text-secondary);
+  cursor: pointer;
+  font: 600 0.75rem "Inter", sans-serif;
+  list-style: none;
+}
+
+.stepDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.stepDetails summary:hover {
+  color: var(--dash-text);
+}
+
+.stepDetails[open] .detailsChevron {
+  transform: rotate(180deg);
+}
+
+.stepDetailsBody {
+  padding: 0 11px 10px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.stepDetailsBody p {
+  margin: 9px 0 0;
+  color: var(--dash-text-muted);
+  font-size: 0.77rem;
+  line-height: 1.6;
+}
+
+.checkpointBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 15px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--dash-accent) 38%, var(--dash-border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--dash-accent-soft) 62%, var(--dash-surface));
+}
+
+.checkpointIcon {
+  display: grid;
+  flex: none;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  color: var(--dash-action-text);
+}
+
+.checkpointBox strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--dash-text);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.checkpointBox p {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.77rem;
+  line-height: 1.55;
+}
+
+.playbackBar {
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, var(--dash-surface-raised), var(--dash-surface));
+}
+
+.progressBlock {
+  display: grid;
+  min-width: 0;
+}
+
+.progressLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--dash-text-muted);
+  font: 700 0.59rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progressLabelRow span:last-child {
+  color: var(--dash-accent-strong);
+}
+
+.progressRail {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.stepRailButton {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 31px;
+  padding: 0 5px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.stepRailButton > span {
+  display: grid;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dash-surface-hover);
+  font: 700 0.6rem "Rajdhani", sans-serif;
+}
+
+.stepRailButton > i {
+  display: block;
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dash-border-strong);
+}
+
+.stepRailButton:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+
+.stepRailButton[aria-current="step"] {
+  border-color: var(--dash-accent);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.stepRailButton[aria-current="step"] > span {
+  background: var(--dash-accent);
+  color: var(--dash-action-text);
+}
+
+.stepRailButton[aria-current="step"] > i {
+  background: var(--dash-accent);
+}
+
+.autoTrack {
+  height: 3px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: var(--dash-border);
+  overflow: hidden;
+}
+
+.autoTrack > i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dash-accent), var(--dash-primary));
+}
+
+.autoProgress {
+  animation: guideAutoAdvance linear forwards;
+}
+
+@keyframes guideAutoAdvance {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+.playbackControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.controlGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.controlButton,
+.manualButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 35px;
+  padding: 0 9px;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 7px;
+  background: var(--dash-surface);
+  color: var(--dash-text);
+  cursor: pointer;
+  font: 700 0.63rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.controlButton:hover:not(:disabled),
+.manualButton:hover:not(:disabled) {
+  border-color: var(--dash-accent);
+  color: var(--dash-accent-strong);
+}
+
+.controlButton:disabled,
+.manualButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.playButton {
+  min-width: 76px;
+  border-color: var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.playButton:hover:not(:disabled) {
+  border-color: var(--dash-action-hover);
+  background: var(--dash-action-hover);
+  color: var(--dash-action-text);
+}
+
+.manualButton[aria-pressed="true"] {
+  border-color: var(--dash-accent);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.playbackHint {
+  margin: 9px 0 0;
+  color: var(--dash-text-muted);
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.troubleshootingPanel {
+  margin-top: 20px;
+}
+
+.troubleshootingPanel .troubleshootingGrid {
+  padding: 0 12px 12px;
+}
+
+.troubleshootingPanel .troubleshootingItem {
+  background: var(--dash-surface);
+}
+
+.relatedGuides {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.relatedGuides .relatedHeader {
+  align-items: end;
+}
+
+.relatedGuides .relatedHeader h3 {
+  margin: 5px 0 0;
+  color: var(--dash-text);
+  font: 700 clamp(1.25rem, 2.6vw, 1.55rem) / 1.1 "Rajdhani", sans-serif;
+}
+
+.relatedGuides .relatedHeader > span {
+  color: var(--dash-text-muted);
+  font: 600 0.64rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.relatedCardButton {
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.walkthroughFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dash-border);
+}
+
+.walkthroughFooter .primaryAction,
+.walkthroughFooter .secondaryAction {
+  margin-top: 0;
+}
+
+.coverageNotice {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: clamp(20px, 4vw, 38px);
+  margin-top: clamp(30px, 5vw, 48px);
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, var(--dash-surface), var(--dash-surface-raised));
+}
+
+.coverageIntro h2 {
+  margin: 6px 0 9px;
+  color: var(--dash-text);
+  font: 700 clamp(1.45rem, 3vw, 1.85rem) / 1.12 "Rajdhani", sans-serif;
+}
+
+.coverageIntro p {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.coverageNotice ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coverageNotice li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dash-surface) 74%, transparent);
+}
+
+.coverageNotice li strong {
+  color: var(--dash-text);
+  font: 700 0.78rem "Rajdhani", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.coverageNotice li span {
+  color: var(--dash-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+/* Guide illustrations */
+
+.guideVisual {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+  overflow: hidden;
+}
+
+.visualChrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 37px;
+  padding: 0 11px;
+  border-bottom: 1px solid var(--dash-border);
+  background: var(--dash-surface-raised);
+}
+
+.visualDots {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.visualDots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dash-border-strong);
+}
+
+.visualDots i:first-child {
+  background: var(--dash-accent);
+}
+
+.visualWindowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font: 700 0.58rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.visualTag {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  color: var(--dash-text-muted);
+  font: 700 0.52rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.visualCanvas {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-height: 325px;
+  padding: clamp(11px, 2.1vw, 20px);
+  background:
+    radial-gradient(circle at 12% 8%, var(--dash-accent-soft), transparent 34%),
+    radial-gradient(circle at 92% 88%, var(--dash-blue-soft, transparent), transparent 32%),
+    linear-gradient(145deg, var(--dash-surface), var(--dash-surface-raised));
+}
+
+.visualCanvas > * {
+  width: 100%;
+  min-width: 0;
+}
+
+.visualCanvas [data-active="true"] {
+  outline: 1px solid var(--dash-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dash-accent-soft) 65%, transparent);
+  transition:
+    outline-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.visualCaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border-top: 1px solid var(--dash-border);
+  color: var(--dash-text-muted);
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
+.visualCaption span {
+  color: var(--dash-accent-strong);
+  font: 700 0.56rem "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mockKicker {
+  color: var(--dash-text-muted);
+  font: 700 0.55rem "Rajdhani", sans-serif;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.mockHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mockHeaderLine {
+  flex: 1;
+  height: 1px;
+  min-width: 12px;
+  background: var(--dash-border);
+}
+
+.mockHeaderPill {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  color: var(--dash-text-muted);
+  font: 700 0.51rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mockField {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+}
+
+.mockField span {
+  color: var(--dash-text-muted);
+  font: 700 0.5rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mockField i {
+  overflow: hidden;
+  color: var(--dash-text-secondary);
+  font-size: 0.61rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mockInlineField {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font-size: 0.6rem;
+  line-height: 1.3;
+}
+
+.mockPrimary,
+.mockSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 25px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font: 700 0.53rem "Rajdhani", sans-serif;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mockPrimary {
+  border: 1px solid var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.mockSecondary {
+  border: 1px solid var(--dash-border-strong);
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+}
+
+.mockButtonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mockDivider {
+  color: var(--dash-text-muted);
+  font: 600 0.52rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.mockHint {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.55rem;
+  line-height: 1.45;
+}
+
+.mockCopy {
+  color: var(--dash-accent-strong);
+  font: 700 0.51rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mockAvatar {
+  display: block;
+  flex: none;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 50%;
+  background:
+    linear-gradient(135deg, var(--dash-accent-soft), var(--dash-blue-soft, var(--dash-surface-hover)));
+}
+
+.readyTag,
+.privateTag,
+.liveTag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  font: 700 0.48rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.readyTag {
+  border-color: color-mix(in srgb, var(--dash-accent) 45%, var(--dash-border));
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.privateTag {
+  border-color: var(--dash-warning-border);
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+}
+
+.liveTag {
+  color: var(--dash-text-muted);
+}
+
+.audioPath {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font: 600 0.57rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.meter {
+  display: inline-flex;
+  align-items: end;
+  gap: 2px;
+  height: 13px;
+  margin-left: auto;
+}
+
+.meter i {
+  display: block;
+  width: 2px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--dash-accent);
+}
+
+.meter i:nth-child(2) {
+  height: 9px;
+}
+
+.meter i:nth-child(3) {
+  height: 12px;
+}
+
+.meter i:nth-child(4) {
+  height: 7px;
+}
+
+.meter i:nth-child(5) {
+  height: 10px;
+}
+
+.flowArrow {
+  flex: none;
+  color: var(--dash-text-muted);
+  font: 700 0.75rem "Rajdhani", sans-serif;
+}
+
+.accountVisual,
+.obsVisual,
+.alertsVisual,
+.voiceVisual,
+.goalsVisual,
+.tipVisual {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.authMock,
+.authSide,
+.mockMiniCard,
+.sceneMock,
+.sourceMock,
+.troubleshootVisual,
+.paymentSettingsMock,
+.alertPreviewMock,
+.alertControlsMock,
+.voiceRecorderMock,
+.voiceLibraryMock,
+.goalMock,
+.leaderboardMock,
+.tipDashboardMock,
+.tipPhoneMock,
+.shareMock,
+.bridgeMock,
+.telegramPhoneMock,
+.groupMock,
+.widgetMock {
+  min-width: 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--dash-surface) 86%, transparent);
+}
+
+.authMock {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 12px;
+}
+
+.authSide {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 8px;
+  background: transparent;
+  border-style: dashed;
+}
+
+.mockMiniCard {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  background: var(--dash-surface);
+}
+
+.mockMiniCard strong {
+  color: var(--dash-text);
+  font: 700 0.72rem "Rajdhani", sans-serif;
+}
+
+.mockMiniCard p {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.55rem;
+  line-height: 1.45;
+}
+
+.setupVisual {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 9px;
+  align-items: stretch;
+}
+
+.setupRail {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.setupStage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font: 700 0.57rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.setupStage i {
+  display: grid;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dash-surface-hover);
+  font-size: 0.48rem;
+  font-style: normal;
+}
+
+.setupMock {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--dash-surface) 86%, transparent);
+}
+
+.mockBrandMark {
+  display: grid;
+  flex: none;
+  width: 21px;
+  height: 21px;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--dash-accent);
+  color: var(--dash-action-text);
+  font: 800 0.5rem "Rajdhani", sans-serif;
+}
+
+.mockMetricRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.mockMetricRow > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.mockMetricRow i {
+  color: var(--dash-text-muted);
+  font: 700 0.45rem "Rajdhani", sans-serif;
+  font-style: normal;
+  letter-spacing: 0.05em;
+}
+
+.mockMetricRow strong {
+  overflow: hidden;
+  color: var(--dash-text-secondary);
+  font: 600 0.52rem "Inter", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mockLinksCard {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+}
+
+.mockLinkRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  color: var(--dash-text-secondary);
+  font-size: 0.56rem;
+}
+
+.mockNavRail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mockNavRail span {
+  padding: 3px 5px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  color: var(--dash-text-muted);
+  font: 600 0.48rem "Rajdhani", sans-serif;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sceneMock,
+.sourceMock {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 10px;
+}
+
+.sourceRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font-size: 0.56rem;
+}
+
+.sourceType {
+  display: grid;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 3px;
+  background: var(--dash-blue-soft, var(--dash-surface-hover));
+  color: var(--dash-blue, var(--dash-accent-strong));
+  font: 700 0.45rem "Rajdhani", sans-serif;
+  font-style: normal;
+}
+
+.sizeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.sizeGrid > span {
+  display: grid;
+  gap: 1px;
+  padding: 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.sizeGrid i {
+  color: var(--dash-text-muted);
+  font: 700 0.45rem "Rajdhani", sans-serif;
+  font-style: normal;
+  letter-spacing: 0.05em;
+}
+
+.sizeGrid strong {
+  color: var(--dash-text);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+}
+
+.audioMock {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font-size: 0.54rem;
+}
+
+.troubleshootVisual {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--dash-surface) 86%, transparent);
+}
+
+.diagnosticHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.diagnosticStatus {
+  color: var(--dash-warning);
+  font: 700 0.48rem "Rajdhani", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.diagnosticList {
+  display: grid;
+  gap: 4px;
+}
+
+.diagnosticRow {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font-size: 0.56rem;
+}
+
+.diagnosticDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+}
+
+.diagnosticRow strong {
+  color: var(--dash-text-muted);
+  font: 600 0.5rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.diagnosticFix {
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.diagnosticFix p {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.52rem;
+  line-height: 1.4;
+}
+
+.tipVisual {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+}
+
+.tipDashboardMock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 11px;
+}
+
+.tipUrlMock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font-size: 0.62rem;
+}
+
+.tipUrlMock strong {
+  color: var(--dash-text);
+  font-family: "Inter", sans-serif;
+}
+
+.tipUrlMock .mockCopy {
+  margin-left: auto;
+}
+
+.tipIdentityRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+}
+
+.tipIdentityRow > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.tipIdentityRow strong {
+  overflow: hidden;
+  color: var(--dash-text);
+  font: 600 0.6rem "Inter", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tipIdentityRow i {
+  color: var(--dash-text-muted);
+  font-size: 0.5rem;
+  font-style: normal;
+}
+
+.tipPhoneMock {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 11px;
+  background:
+    linear-gradient(160deg, var(--dash-accent-soft), var(--dash-surface) 42%);
+}
+
+.tipPhoneMock > strong {
+  color: var(--dash-text);
+  font: 700 0.78rem "Rajdhani", sans-serif;
+}
+
+.currencyRow {
+  display: flex;
+  gap: 4px;
+}
+
+.currencyRow span {
+  min-width: 36px;
+  padding: 4px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  color: var(--dash-text-muted);
+  font: 700 0.5rem "Rajdhani", sans-serif;
+  text-align: center;
+}
+
+.currencyRow span[data-active="true"] {
+  border-color: var(--dash-accent);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.amountPills {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.amountPills i {
+  padding: 5px 2px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font: 700 0.53rem "Rajdhani", sans-serif;
+  font-style: normal;
+  text-align: center;
+}
+
+.shareMock {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+}
+
+.shareGood,
+.shareBad {
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 0.54rem;
+  line-height: 1.4;
+}
+
+.shareGood {
+  border: 1px solid color-mix(in srgb, var(--dash-accent) 35%, var(--dash-border));
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+}
+
+.shareBad {
+  border: 1px solid var(--dash-warning-border);
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+}
+
+.paymentVisual {
+  display: grid;
+  gap: 8px;
+}
+
+.paymentSettingsMock {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 11px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.settingRow > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.settingRow strong {
+  color: var(--dash-text);
+  font: 600 0.62rem "Inter", sans-serif;
+}
+
+.settingRow i {
+  color: var(--dash-text-muted);
+  font-size: 0.51rem;
+  font-style: normal;
+}
+
+.settingValue {
+  flex: none;
+  color: var(--dash-text-muted);
+  font: 700 0.5rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.paymentFlow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.flowNode {
+  display: grid;
+  flex: 1 1 80px;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font: 600 0.57rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.flowNode i {
+  color: var(--dash-text-muted);
+  font-size: 0.45rem;
+  font-style: normal;
+}
+
+.paymentNote {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font: 700 0.52rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.alertPreviewMock {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 11px;
+  background:
+    radial-gradient(circle at 50% 22%, var(--dash-accent-soft), transparent 55%),
+    var(--dash-surface);
+}
+
+.alertPreviewTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alertBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dash-surface) 75%, transparent);
+}
+
+.alertAvatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background:
+    linear-gradient(135deg, var(--dash-accent), var(--dash-primary));
+}
+
+.alertBox > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.alertBox strong {
+  color: var(--dash-text);
+  font: 700 0.75rem "Rajdhani", sans-serif;
+}
+
+.alertBox p {
+  margin: 0;
+  color: var(--dash-accent-strong);
+  font: 700 0.55rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.alertBox span {
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font-size: 0.56rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertGraphic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 46px;
+}
+
+.alertGraphic i {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--dash-accent);
+  border-radius: 50%;
+}
+
+.alertGraphic i:nth-child(2) {
+  width: 17px;
+  height: 17px;
+  background: var(--dash-accent-soft);
+}
+
+.alertGraphic i:nth-child(3) {
+  width: 5px;
+  height: 5px;
+  background: var(--dash-accent);
+}
+
+.alertControlsMock {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px;
+}
+
+.controlRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.controlRow span {
+  color: var(--dash-text-muted);
+  font-size: 0.55rem;
+}
+
+.controlRow strong {
+  color: var(--dash-text-secondary);
+  font: 600 0.55rem "Inter", sans-serif;
+  text-align: right;
+}
+
+.saveScopeMock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.saveScopeMock .mockKicker {
+  grid-column: 1 / -1;
+}
+
+.voiceRecorderMock,
+.voiceLibraryMock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 11px;
+}
+
+.waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 55px;
+  padding: 0 4px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  overflow: hidden;
+}
+
+.waveform i {
+  display: block;
+  flex: 1;
+  height: 22%;
+  border-radius: 2px;
+  background: var(--dash-accent);
+  opacity: 0.55;
+}
+
+.waveform i:nth-child(3n) {
+  height: 48%;
+}
+
+.waveform i:nth-child(4n) {
+  height: 78%;
+  opacity: 0.8;
+}
+
+.waveform i:nth-child(5n) {
+  height: 36%;
+}
+
+.consentMock {
+  padding: 5px 6px;
+  border: 1px solid color-mix(in srgb, var(--dash-accent) 35%, var(--dash-border));
+  border-radius: 4px;
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-strong);
+  font: 600 0.55rem "Inter", sans-serif;
+}
+
+.cloneRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--dash-border);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.cloneRow > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.cloneRow strong {
+  color: var(--dash-text);
+  font: 600 0.6rem "Inter", sans-serif;
+}
+
+.cloneRow i {
+  color: var(--dash-text-muted);
+  font-size: 0.5rem;
+  font-style: normal;
+}
+
+.cloneRow .readyTag {
+  margin-left: auto;
+}
+
+.goalMock,
+.leaderboardMock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 11px;
+}
+
+.goalMock > strong {
+  color: var(--dash-text);
+  font: 700 0.8rem "Rajdhani", sans-serif;
+}
+
+.progressTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--dash-border);
+  overflow: hidden;
+}
+
+.progressTrack i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dash-accent), var(--dash-primary));
+}
+
+.goalNumbers {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dash-text-muted);
+  font: 600 0.53rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.leaderRow {
+  display: grid;
+  grid-template-columns: 16px 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font: 600 0.52rem "Rajdhani", sans-serif;
+}
+
+.leaderRow strong {
+  overflow: hidden;
+  color: var(--dash-text-secondary);
+  font: 500 0.55rem "Inter", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderRow .mockAvatar {
+  width: 20px;
+  height: 20px;
+}
+
+.widgetsVisual {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.widgetMock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+}
+
+.wheelGraphic {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin: 2px auto;
+  place-items: center;
+  border: 2px solid var(--dash-border-strong);
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--dash-accent) 0 25%,
+    var(--dash-blue, var(--dash-primary)) 25% 50%,
+    var(--dash-primary) 50% 75%,
+    var(--dash-accent-strong) 75% 100%
+  );
+}
+
+.wheelGraphic::before {
+  position: absolute;
+  top: -5px;
+  width: 0;
+  height: 0;
+  border-right: 4px solid transparent;
+  border-bottom: 7px solid var(--dash-text);
+  border-left: 4px solid transparent;
+  content: "";
+}
+
+.wheelGraphic i {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--dash-surface);
+  border-radius: 50%;
+  background: var(--dash-surface-raised);
+}
+
+.wheelGraphic span {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dash-text);
+}
+
+.ticketRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font-size: 0.53rem;
+}
+
+.ticketRow strong {
+  flex: none;
+  color: var(--dash-text-muted);
+  font: 600 0.49rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.timerMock {
+  color: var(--dash-text);
+  font: 700 1.3rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.widgetSupportRow {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font: 600 0.54rem "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.widgetSupportRow > span:first-child {
+  margin-right: auto;
+}
+
+.telegramVisual {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) auto minmax(0, 0.74fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.bridgeMock,
+.telegramPhoneMock,
+.groupMock {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 10px;
+}
+
+.bridgeMock strong {
+  color: var(--dash-text);
+  font: 700 0.73rem "Rajdhani", sans-serif;
+  letter-spacing: 0.03em;
+}
+
+.bridgeMock p,
+.telegramPhoneMock p {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.51rem;
+  line-height: 1.4;
+}
+
+.bridgeStatus {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dash-text-muted);
+  font: 600 0.51rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.bridgeStatus i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dash-accent);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.telegramPhoneMock {
+  justify-items: center;
+  text-align: center;
+}
+
+.qrGhost {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 67px;
+  height: 67px;
+  padding: 5px;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 5px;
+  background: var(--dash-surface);
+}
+
+.qrGhost i {
+  border-radius: 1px;
+  background: var(--dash-text-secondary);
+}
+
+.qrGhost i:nth-child(3n),
+.qrGhost i:nth-child(5n),
+.qrGhost i:nth-child(7n) {
+  opacity: 0.22;
+}
+
+.qrGhost i:nth-child(4n + 1) {
+  opacity: 0.7;
+}
+
+.telegramPhoneMock > span:not(.mockKicker) {
+  color: var(--dash-text-secondary);
+  font: 600 0.55rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.groupRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 4px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font-size: 0.53rem;
+}
+
+.logRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px dashed var(--dash-border-strong);
+  border-radius: 4px;
+  color: var(--dash-text-muted);
+  font-size: 0.51rem;
+}
+
+.logRow strong {
+  color: var(--dash-accent-strong);
+  font: 600 0.48rem "Rajdhani", sans-serif;
+  text-transform: uppercase;
+}
+
+.backToPicker:focus-visible,
+.pickerClear:focus-visible,
+.categoryFilter:focus-visible,
+.pickerCard:focus-visible,
+.stepRailButton:focus-visible,
+.controlButton:focus-visible,
+.manualButton:focus-visible,
+.relatedCardButton:focus-visible {
+  outline: 2px solid var(--dash-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1023px) {
+  .guideWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .pickerColumn {
+    position: static;
+    max-height: none;
+    padding-right: 0;
+    overflow: visible;
+  }
+
+  .pickerList {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+  }
+
+  .pickerList > li {
+    flex: 0 0 min(280px, 82vw);
+    scroll-snap-align: start;
+  }
+
+  .pickerCard {
+    height: 100%;
+  }
+}
+
+@media (max-width: 860px) {
+  .selectorIntro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .coverageNotice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .accountVisual,
+  .obsVisual,
+  .alertsVisual,
+  .voiceVisual,
+  .goalsVisual,
+  .tipVisual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setupVisual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setupRail {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .setupStage {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: 6px 2px;
+    font-size: 0.5rem;
+    text-align: center;
+  }
+
+  .tipVisual .shareMock {
+    grid-column: auto;
+  }
+
+  .widgetsVisual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .widgetSupportRow {
+    grid-column: auto;
+  }
+
+  .telegramVisual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .telegramVisual > .flowArrow {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
+  .prerequisitePanel ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .relatedGuides .relatedHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+}
+
+@media (max-width: 520px) {
+  .walkthroughSection {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .visualChrome {
+    min-height: 33px;
+    padding-inline: 8px;
+  }
+
+  .visualCanvas {
+    min-height: 285px;
+    padding: 10px;
+  }
+
+  .guideVisual {
+    border-radius: 11px;
+  }
+
+  .playbackControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controlGroup {
+    justify-content: space-between;
+  }
+
+  .controlButton,
+  .manualButton {
+    flex: 1;
+  }
+
+  .playButton {
+    flex: 1.3;
+  }
+
+  .walkthroughFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .walkthroughFooter .primaryAction,
+  .walkthroughFooter .secondaryAction {
+    width: 100%;
+  }
+
+  .selectorCount {
+    align-self: flex-start;
+  }
+
+  .pickerList > li {
+    flex-basis: min(260px, 84vw);
+  }
+
+  .availabilityBadge {
+    padding-inline: 6px;
+    font-size: 0.53rem;
+  }
+
+  .walkthroughTopbar {
+    align-items: flex-start;
+  }
+
+  .coverageNotice {
+    padding: 15px;
+  }
+}
+
+@media (max-width: 360px) {
+  .walkthroughTitleRow {
+    gap: 8px;
+  }
+
+  .walkthroughTitleRow h2 {
+    font-size: 1.42rem;
+  }
+
+  .walkthroughHeader {
+    padding-top: 11px;
+  }
+
+  .walkthroughMeta {
+    gap: 6px 9px;
+    font-size: 0.57rem;
+  }
+
+  .stepRailButton {
+    padding-inline: 3px;
+  }
+
+  .stepRailButton > i {
+    display: none;
+  }
+
+  .prerequisitePanel summary > span:last-child,
+  .troubleshootingPanel summary > span:last-child {
+    display: none;
+  }
+
+  .setupRail {
+    gap: 3px;
+  }
+
+  .setupStage {
+    padding-inline: 1px;
+  }
+
+  .mockMetricRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mockMetricRow > span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pickerCard,
+  .categoryFilter,
+  .stepRailButton,
+  .controlButton,
+  .manualButton,
+  .pickerSearchField,
+  .visualCanvas [data-active="true"] {
+    transition: none;
+  }
+
+  .autoProgress {
+    animation: none;
+  }
+}

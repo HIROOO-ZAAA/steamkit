@@ -4,8 +4,10 @@ import {
   checkAbaTransaction,
   createAbaQr,
   createAbaTransactionId,
+  normalizeAbaPaymentStatus,
   verifyAbaCallback,
 } from "@/lib/payments/aba-payway";
+import type { AbaPaymentStatus } from "@/lib/payments/aba-payway";
 import type {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -81,6 +83,16 @@ export class AbaPaywayProvider implements PaymentProvider {
         return { ok: false, reason: "Invalid ABA PayWay callback signature." };
       }
 
+      let callbackStatus: AbaPaymentStatus;
+      try {
+        callbackStatus = normalizeAbaPaymentStatus(payload.status);
+      } catch {
+        return {
+          ok: false,
+          reason: "Unknown ABA PayWay callback status.",
+        };
+      }
+
       const event: VerifiedWebhookEvent = {
         type: "payment.updated",
         provider: this.name,
@@ -90,7 +102,7 @@ export class AbaPaywayProvider implements PaymentProvider {
           payload.payment_currency === "USD" || payload.payment_currency === "KHR"
             ? payload.payment_currency
             : undefined,
-        status: mapStatus(String(payload.status ?? "")),
+        status: mapStatus(callbackStatus),
         metadata: payload,
         createdAt: new Date().toISOString(),
       };
@@ -109,21 +121,17 @@ export class AbaPaywayProvider implements PaymentProvider {
   }
 }
 
-function mapStatus(status: string): PaymentStatus {
-  switch (status.toUpperCase()) {
+function mapStatus(status: AbaPaymentStatus): PaymentStatus {
+  switch (status) {
     case "APPROVED":
-    case "0":
       return "completed";
-    case "CANCELLED":
-    case "7":
-      return "cancelled";
-    case "REFUNDED":
-    case "4":
-      return "refunded";
-    case "DECLINED":
-    case "3":
-      return "failed";
-    default:
+    case "PENDING":
       return "pending";
+    case "CANCELLED":
+      return "cancelled";
+    case "DECLINED":
+      return "failed";
+    case "REFUNDED":
+      return "refunded";
   }
 }

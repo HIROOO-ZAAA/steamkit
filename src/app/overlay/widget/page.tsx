@@ -202,7 +202,7 @@ export default function WidgetOverlayPage({
     }
   };
 
-  const getRowStyle = (index: number) => {
+  const getRowStyle = (_index: number) => {
     const baseStyle: React.CSSProperties = {
       display: "flex",
       alignItems: "center",

@@ -1,13 +1,19 @@
 # Database migrations
 
-50 files in `supabase/migrations/`, plus one master schema at the repo root.
+72 SQL migration files in `supabase/migrations/` as counted on 2026-11-19, plus
+one master schema at the repo root. Recount this as migrations are added.
 
 ## The one rule
 
 **A file in `supabase/migrations/` proves nothing about the database.** Nothing
-runs these automatically. The Supabase CLI is not installed and the project is
-not linked (`supabase/.temp` has no `project-ref`), so every file is pasted by
-hand into Supabase Dashboard -> SQL Editor.
+runs these automatically. This checkout contains a local CLI entry at
+`node_modules/.bin/supabase` and a project-ref marker at
+`supabase/.temp/project-ref`; `AGENTS.md` currently says the CLI is not
+installed or linked. This local-state conflict is unresolved. File presence
+does not prove authenticated access or which migrations reached the live
+database. Verify the intended project and inspect migration status read-only
+before preparing SQL; apply reviewed migrations by hand only after confirming
+the target and pending state.
 
 That is why the same class of bug has appeared repeatedly. Each of these shipped
 in a migration file, was read by a person, looked correct, and was only found
@@ -53,6 +59,32 @@ It is proven non-vacuous: reintroducing each of the four bugs above makes it
 fail, and a consistent column rename correctly stays silent.
 
 ## Rebuilding a database from scratch
+
+This bootstrap file is for an empty database only. **Do not rerun
+`supabase_schema.sql` against an existing or already-migrated project.** Its
+function definitions are the initial schema and can be older than the versions
+installed by later migrations. For example, `streamkit_resolve_overlay(text)`
+has gained return columns over time; PostgreSQL rejects changing its table
+return type with `42P13`. Do not resolve that by dropping the live function and
+leaving the bootstrap definition in place, because the current overlay needs
+the migrated return shape. Check the live migration state and apply only the
+reviewed pending migration(s) in order.
+
+## Diagnosing SQL editor errors
+
+- `42P13` for `streamkit_resolve_overlay(text)` usually means the bootstrap
+  schema was rerun after later migrations changed its return columns. Check the
+  target project and migration state; do not drop the live function and leave
+  the older bootstrap definition in place. Migration
+  `20261019000013_alerts_tts_volume.sql` contains the current evolved function.
+- `42P01` for `public.telegram_aba_notifications` means the table is absent in
+  the project receiving the query. Migration
+  `20261001200000_telegram_local_listener.sql` creates it; verify the target
+  project and whether that migration ran before applying anything.
+- `42703` for `i.indexid` is a typo in a catalog query: `pg_index` uses
+  `indexrelid`. The checked-in payment migration uses that column.
+- `42883` for `pg_catalog.greatest(...)` comes from qualifying `GREATEST` as a
+  function. Use `greatest(...)` unqualified; the checked-in SQL already does.
 
 Order matters and is not obvious:
 

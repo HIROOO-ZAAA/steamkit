@@ -1,0 +1,85 @@
+.header {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(1.05rem, 2vw, 1.5rem);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dash-accent) 24%, var(--dash-border));
+  border-radius: 16px;
+  background:
+    radial-gradient(520px 220px at 0% 0%, var(--dash-aurora-1), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 50%),
+    var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.copy {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 7px;
+  color: var(--dash-accent);
+  font: 700 0.68rem "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  width: 16px;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  opacity: 0.8;
+}
+
+.title {
+  margin: 0;
+  color: var(--dash-text);
+  font: 700 clamp(2rem, 2.8vw, 2.65rem) / 1.08 "Rajdhani", sans-serif;
+  letter-spacing: 0.015em;
+  text-wrap: balance;
+}
+
+.description {
+  max-width: 720px;
+  margin: 9px 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.58;
+}
+
+.description strong {
+  color: var(--dash-text);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .title {
+    font-size: 1.8rem;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}

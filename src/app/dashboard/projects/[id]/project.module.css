@@ -90,6 +90,12 @@
   transition: all var(--transition-fast);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .typeBtn {
+    transition: none;
+  }
+}
+
 .typeBtn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);

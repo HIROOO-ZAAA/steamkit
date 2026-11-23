@@ -170,6 +170,24 @@ function stripProcedural(text) {
   return { text: text.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, "''"), blocks: blocks.length };
 }
 
+for (const [file, raw] of [...sql, ["supabase_schema.sql", master]]) {
+  for (const bodyMatch of raw.matchAll(/\$(\w*)\$([\s\S]*?)\$\1\$/g)) {
+    const bodyStart = bodyMatch.index + bodyMatch[1].length + 2;
+    bodyMatch[2].split("\n").forEach((line, index) => {
+      if (
+        /\bthen\b/i.test(line) &&
+        /\belse\b/i.test(line) &&
+        /\bend\b/i.test(line) &&
+        !/\bcase\b/i.test(line) &&
+        !/^\s*if\b/i.test(line.trim())
+      ) {
+        const lineNo = raw.slice(0, bodyStart).split("\n").length + index + 1;
+        fail(file, `line ${lineNo}: THEN/ELSE/END without CASE in a function body (42601)`);
+      }
+    });
+  }
+}
+
 let proceduralBlocks = 0;
 
 for (const [file, raw] of sql) {
@@ -335,6 +353,63 @@ for (const [file, text] of sql) {
     if (!clientCallable) continue;
     if (DELETE_OK[fn]) note(`${file}: ${fn}() deletes rows — ${DELETE_OK[fn]}`);
     else fail(file, `${fn}() deletes rows and is granted to a client role. "Clear" must hide, not destroy.`);
+  }
+}
+
+// ── 4b. Ownership-critical RPCs must derive identity from auth.uid() ─────────
+// streamkit_create_local_telegram_agent is GRANT EXECUTE TO authenticated, so a
+// caller-supplied creator id would let any signed-in user mint, revoke, or
+// delete another creator's Telegram listener. The secure version derives the
+// creator from auth.uid() and soft-revokes (UPDATE revoked_at) rather than
+// hard-deleting. This is a text check: it cannot see what the live DB runs.
+//
+// streamkit_create_share_code is covered by check 3 (ON CONFLICT): the table
+// has UNIQUE (code) and no unique key on user_id, so ON CONFLICT (user_id)
+// fails there and ON CONFLICT (code) passes.
+const OWNERSHIP_CRITICAL = {
+  "streamkit_create_local_telegram_agent": {
+    forbiddenParam: "p_creator_id",
+    mustContain: "auth.uid()",
+    mustNotContain: "delete from telegram_local_agents",
+    mustContainRevoke: "revoked_at = now()",
+  },
+};
+
+const fnRe = String.raw`create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?(\w+)\s*\(([\s\S]*?)\)\s*([\s\S]*?)\$(\w*)\$([\s\S]*?)\$\4\$`;
+// Check both the migration directory and the canonical schema. The canonical
+// schema is migration #0 and is the source of truth a rebuild would use.
+const allSql = [...sql.entries(), ["supabase_schema.sql", master]];
+for (const [file, text] of allSql) {
+  for (const m of text.matchAll(new RegExp(fnRe, "gi"))) {
+    const fn = m[1];
+    const spec = OWNERSHIP_CRITICAL[fn];
+    if (!spec) continue;
+    const params = m[2];
+    const body = m[5];
+    if (new RegExp(`\\b${spec.forbiddenParam}\\b`).test(params)) {
+      fail(
+        file,
+        `${fn}() takes a caller-supplied ${spec.forbiddenParam} parameter — ownership must come from auth.uid(), not the caller`,
+      );
+    }
+    if (!new RegExp(spec.mustContain, "i").test(body)) {
+      fail(
+        file,
+        `${fn}() does not derive owner from ${spec.mustContain} — a signed-in caller could operate on another creator's agent`,
+      );
+    }
+    if (new RegExp(spec.mustNotContain, "i").test(body)) {
+      fail(
+        file,
+        `${fn}() hard-deletes agents (${spec.mustNotContain}) — must soft-revoke with UPDATE revoked_at so a re-create cannot destroy another creator's listener`,
+      );
+    }
+    if (!new RegExp(spec.mustContainRevoke, "i").test(body)) {
+      fail(
+        file,
+        `${fn}() does not soft-revoke (${spec.mustContainRevoke}) — re-creating an agent must revoke the caller's own previous agent, not delete blindly`,
+      );
+    }
   }
 }
 

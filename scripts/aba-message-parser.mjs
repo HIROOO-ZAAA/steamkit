@@ -4,7 +4,7 @@ export function parseAbaMessage(text) {
 
   const amountRe = /(\$|៛|USD|KHR)\s*([0-9][0-9,]*)(?:\.([0-9]+))?/i;
   const amountFirstRe = /([0-9][0-9,]*)(?:\.([0-9]+))?\s*(\$|៛|USD|KHR)/i;
-  const donorRe = /(?:paid\s+by|from|donor|payer)\s*:?\s*([A-Z0-9_'-]+(?:\s+[A-Z0-9_'-]+)*?)(?=\s+(?:on|at|via|time|date)\b|\s*\(|$)/i;
+  const donorRe = /(?:paid\s+by|from|donor|payer)\s*:?\s*([\p{L}\p{M}\p{N}_'-]+(?:\s+[\p{L}\p{M}\p{N}_'-]+)*?)(?=\s+(?:on|at|via|time|date)\b|\s*\(|$)/iu;
   const noteRe = /(?:message|remark|note|memo)\s*[:\-]\s*([^\n]+)/i;
 
   let m = source.match(amountRe);
@@ -48,6 +48,7 @@ export function parseAbaMessage(text) {
 }
 
 if (process.argv.includes("--test")) {
+  const khmerName = String.fromCodePoint(0x179F, 0x17BB, 0x1781);
   const cases = [
     ["$0.20 paid by CHEA LYHENG (*678) on Oct 07, 03:48 PM via ABA KHQR (ACLEDA Bank Plc.)", "USD", 0.2, "CHEA LYHENG", undefined],
     ["KHR 40,000 from JOHN DOE on Oct 07", "KHR", 40000, "JOHN DOE", undefined],
@@ -56,6 +57,10 @@ if (process.argv.includes("--test")) {
     ["$ 10.00 message: Thanks for stream", "USD", 10, "Anonymous", "Thanks for stream"],
     ["10 USD paid by M SOKUN time: 02:13 PM", "USD", 10, "M SOKUN", undefined],
     ["$25.00 from NITA (paying rent) message: keep it up", "USD", 25, "NITA", "keep it up"],
+    [`KHR 40,000 paid by ${khmerName} on Nov 15`, "KHR", 40000, khmerName, undefined],
+    [`KHR 40,000 paid by JOHN ${khmerName} on Nov 15`, "KHR", 40000, `JOHN ${khmerName}`, undefined],
+    [`KHR 40,000 from ${khmerName} on Nov 15`, "KHR", 40000, khmerName, undefined],
+    [`KHR 40,000 donor: ${khmerName} via ABA`, "KHR", 40000, khmerName, undefined],
   ];
   let failed = 0;
   for (const [input, cur, amt, donor, note] of cases) {

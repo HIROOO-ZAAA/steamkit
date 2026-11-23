@@ -22,7 +22,6 @@ export async function generateMetadata({
   const handle = decodeURIComponent(username);
 
   let displayName = handle;
-  let avatarUrl: string | null = null;
   let bio: string | null = null;
   let streamTitle: string | null = null;
 
@@ -36,7 +35,6 @@ export async function generateMetadata({
 
     if (data) {
       displayName = data.display_name?.trim() || handle;
-      avatarUrl = data.avatar_url ?? null;
       bio = data.bio ?? null;
       streamTitle = data.stream_title ?? null;
     }

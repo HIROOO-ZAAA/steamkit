@@ -1,144 +1,710 @@
 .page {
-  min-height: 100vh;
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
-  position: relative;
-  overflow: hidden;
-  background: var(--bg-base);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
 }
 
-.bg {
+.ambient {
   position: fixed;
   inset: 0;
-  background: var(--gradient-hero);
   z-index: 0;
-}
-
-.glow {
-  position: fixed;
-  top: 30%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 700px;
-  height: 700px;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.1) 0%, transparent 65%);
-  z-index: 1;
   pointer-events: none;
+  background:
+    radial-gradient(
+      720px 460px at 50% 32%,
+      var(--dash-aurora-1),
+      transparent 72%
+    ),
+    radial-gradient(
+      520px 320px at 100% 0%,
+      var(--dash-aurora-2),
+      transparent 68%
+    );
+  opacity: 0.75;
 }
 
-.nav {
+.topbar {
   position: relative;
-  z-index: 10;
-  padding: 1.5rem 2rem;
+  z-index: 2;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: clamp(1rem, 2.4vw, 1.6rem) clamp(1rem, 4vw, 2.5rem);
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.logo {
+.brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 1.6rem;
-  font-weight: 700;
+  gap: 0.72rem;
+  min-width: 0;
+  margin-left: -0.25rem;
+  padding: 0.25rem 0.35rem 0.25rem 0.25rem;
+  border-radius: 12px;
   text-decoration: none;
+  transition: background-color 160ms ease;
 }
 
-.wrapper {
+.brand:hover {
+  background: var(--dash-accent-soft);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--dash-focus);
+  outline-offset: 3px;
+}
+
+.brandMark {
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 11px;
+  background: linear-gradient(
+    145deg,
+    var(--dash-accent-soft),
+    transparent 72%
+  );
+  color: var(--dash-accent-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 20px var(--dash-accent-soft);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.brand:hover .brandMark {
+  border-color: var(--dash-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 24px var(--dash-accent-soft);
+}
+
+.brandMark svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.brandCopy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.brandName {
+  color: var(--dash-text);
+  font: 700 1.3rem/1 "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.brandMeta {
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font: 600 0.58rem/1.2 "Inter", sans-serif;
+  letter-spacing: 0.14em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.main {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  position: relative;
-  z-index: 10;
-  margin-top: -2rem;
+  padding: clamp(1.25rem, 4vh, 2.6rem) clamp(1rem, 4vw, 2rem)
+    clamp(2rem, 6vh, 4rem);
+}
+
+.loading {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--dash-text-muted);
+  font: 600 0.7rem/1.4 "Inter", sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .authCard {
+  position: relative;
   width: 100%;
-  max-width: 440px;
-  padding: 2.5rem;
+  max-width: 460px;
+  padding: clamp(1.4rem, 3.5vw, 2.35rem);
+  border-color: var(--dash-border);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    var(--dash-surface) 0%,
+    var(--dash-canvas) 100%
+  );
+  box-shadow:
+    var(--dash-shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.authCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--dash-focus),
+    transparent
+  );
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .header {
+  margin-bottom: 1.55rem;
   text-align: center;
-  margin-bottom: 2rem;
 }
 
 .title {
-  font-size: 1.75rem;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
+  margin: 0 0 0.45rem;
+  color: var(--dash-text);
+  font: 700 2rem/1.08 "Rajdhani", sans-serif;
+  letter-spacing: 0.005em;
+  text-transform: none;
+  text-wrap: balance;
 }
 
 .subtitle {
-  font-size: 0.9375rem;
-  color: var(--text-secondary);
+  max-width: 34ch;
+  margin-inline: auto;
+  color: var(--dash-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  text-wrap: balance;
 }
 
-.googleBtn {
+.authCard .googleBtn {
   width: 100%;
-  margin-bottom: 1.5rem;
-  gap: 0.75rem;
-  height: 3.25rem;
+  min-height: 3rem;
+  gap: 0.65rem;
+  font-family: "Inter", sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.googleIcon {
+  width: 18px;
+  height: 18px;
+  flex: none;
 }
 
 .divider {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin: 1.5rem 0;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.dividerLine {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, var(--dash-border));
+}
+
+.dividerLine:last-child {
+  background: linear-gradient(90deg, var(--dash-border), transparent);
 }
 
 .dividerText {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--dash-text-muted);
+  font: 700 0.65rem/1.2 "Inter", sans-serif;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
   white-space: nowrap;
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.9rem;
+  min-width: 0;
 }
 
-.submitBtn {
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--dash-text-secondary);
+  font: 700 0.7rem/1.2 "Rajdhani", sans-serif;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.inputShell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 3rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.inputShell:hover {
+  border-color: var(--dash-border-strong);
+}
+
+.inputShell:focus-within {
+  border-color: var(--dash-accent);
+  background: var(--dash-surface);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.fieldIcon {
+  position: absolute;
+  left: 0.85rem;
+  display: grid;
+  place-items: center;
+  color: var(--dash-text-muted);
+  pointer-events: none;
+  transition: color 160ms ease;
+}
+
+.inputShell:focus-within .fieldIcon {
+  color: var(--dash-accent);
+}
+
+.input {
   width: 100%;
-  margin-top: 0.5rem;
-  height: 3.25rem;
+  min-width: 0;
+  height: 3rem;
+  padding: 0 1rem 0 2.55rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dash-text);
+  font: 500 1rem/1.2 "Inter", sans-serif;
+  box-shadow: none;
+}
+
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.input::placeholder {
+  color: var(--dash-text-muted);
+  opacity: 0.8;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--dash-text);
+  caret-color: var(--dash-text);
+  transition: background-color 9999s ease-out 0s;
+}
+
+.passwordInput {
+  padding-right: 3.15rem;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  width: 2.45rem;
+  height: 2.45rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.passwordToggle:hover:not(:disabled) {
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.passwordToggle:focus-visible {
+  outline: 2px solid var(--dash-focus);
+  outline-offset: 1px;
+}
+
+.passwordToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.helperText {
+  margin: 0.05rem 0 0;
+  padding-left: 0.15rem;
+  color: var(--dash-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.feedback {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  min-height: 3rem;
+}
+
+.feedbackHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.feedbackHint svg {
+  flex: none;
+  color: var(--dash-accent);
+}
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.alert svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.alertError {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.alertSuccess {
+  border-color: var(--dash-success-border);
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+}
+
+.authCard .submitBtn {
+  width: 100%;
+  min-height: 3.1rem;
+  font-family: "Inter", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .toggle {
+  margin: 1rem 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
   text-align: center;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  margin-top: 1.5rem;
 }
 
-.toggleBtn {
-  background: none;
-  border: none;
-  color: var(--brand-primary);
+.toggleLink {
+  border-radius: 4px;
+  color: var(--dash-accent-strong);
   font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  transition: color var(--transition-fast);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  transition: color 150ms ease;
 }
 
-.toggleBtn:hover {
-  color: var(--brand-primary-hover);
+.toggleLink:hover {
+  color: var(--dash-accent);
   text-decoration: underline;
 }
 
+.toggleLink:focus-visible {
+  outline: 2px solid var(--dash-focus);
+  outline-offset: 2px;
+}
+
+.toggleLink[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 @media (max-width: 480px) {
-  .authCard {
-    padding: 1.5rem;
-  }
-  
-  .wrapper {
+  .topbar {
     padding: 1rem;
+  }
+
+  .brand {
+    gap: 0.55rem;
+  }
+
+  .brandMark {
+    width: 2.15rem;
+    height: 2.15rem;
+  }
+
+  .brandName {
+    font-size: 1.15rem;
+  }
+
+  .brandMeta {
+    display: none;
+  }
+
+  .main {
+    padding: 1rem 0.75rem 1.5rem;
+  }
+
+  .authCard {
+    padding: 1.3rem 1.15rem;
+    border-radius: 16px;
+  }
+
+  .title {
+    font-size: 1.8rem;
+  }
+
+  .subtitle {
+    font-size: 0.82rem;
+  }
+
+  .authCard .googleBtn,
+  .inputShell,
+  .input,
+  .authCard .submitBtn {
+    min-height: 2.9rem;
+  }
+
+  .input {
+    height: 2.9rem;
+  }
+
+  .feedback {
+    min-height: 3rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar {
+    padding: 0.85rem 0.75rem;
+  }
+
+  .brandMark {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .brandName {
+    font-size: 1.05rem;
+  }
+
+  .authCard {
+    padding: 1.15rem 1rem;
+  }
+
+  .fieldLabel {
+    font-size: 0.66rem;
+  }
+
+  .dividerText {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+}
+
+@media (max-height: 960px) {
+  .topbar {
+    padding-block: 0.85rem;
+  }
+
+  .main {
+    padding-block: 1rem 1.5rem;
+  }
+
+  .authCard {
+    padding: 1.2rem clamp(1.15rem, 4vw, 1.6rem);
+  }
+
+  .header {
+    margin-bottom: 1.15rem;
+  }
+
+  .title {
+    font-size: 1.8rem;
+  }
+
+  .form {
+    gap: 0.75rem;
+  }
+
+  .divider {
+    margin: 0.95rem 0;
+  }
+
+  .authCard .googleBtn {
+    min-height: 2.8rem;
+  }
+
+  .inputShell,
+  .input {
+    min-height: 2.8rem;
+    height: 2.8rem;
+  }
+
+  .feedback {
+    min-height: 3rem;
+  }
+
+  .authCard .submitBtn {
+    min-height: 2.9rem;
+  }
+
+  .toggle {
+    margin-top: 0.8rem;
+  }
+}
+
+@media (max-height: 740px) {
+  .topbar {
+    padding-block: 0.6rem;
+  }
+
+  .main {
+    padding-block: 0.75rem 1rem;
+  }
+
+  .authCard {
+    padding-block: 0.8rem;
+  }
+
+  .header {
+    margin-bottom: 0.8rem;
+  }
+
+  .title {
+    font-size: 1.55rem;
+  }
+
+  .subtitle {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .authCard .googleBtn {
+    min-height: 2.6rem;
+  }
+
+  .divider {
+    margin: 0.65rem 0;
+  }
+
+  .form {
+    gap: 0.6rem;
+  }
+
+  .field {
+    gap: 0.28rem;
+  }
+
+  .inputShell,
+  .input {
+    min-height: 2.6rem;
+    height: 2.6rem;
+  }
+
+  .feedback {
+    min-height: 2.9rem;
+  }
+
+  .authCard .submitBtn {
+    min-height: 2.7rem;
+  }
+
+  .toggle {
+    margin-top: 0.55rem;
+  }
+}
+
+@media (max-height: 640px) {
+  .authCard {
+    padding: 1rem 1.25rem;
+  }
+
+  .header {
+    margin-bottom: 0.8rem;
+  }
+
+  .title {
+    font-size: 1.65rem;
+  }
+
+  .divider {
+    margin: 0.75rem 0;
+  }
+
+  .form {
+    gap: 0.65rem;
+  }
+
+  .feedback {
+    min-height: 2.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand,
+  .brandMark,
+  .inputShell,
+  .fieldIcon,
+  .passwordToggle,
+  .toggleLink {
+    transition: none;
   }
 }

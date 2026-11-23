@@ -7,6 +7,7 @@ import {
   loadBakongMerchantConfig,
 } from "@/lib/payments/bakong";
 import { checkAbaTransaction, loadAbaMerchantConfig } from "@/lib/payments/aba-payway";
+import { normalizeAbaProviderTransactionId } from "@/lib/payments/aba-apv";
 import { allowPaymentRequest } from "@/lib/payments/rate-limit";
 
 export const runtime = "nodejs";
@@ -115,11 +116,21 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
           );
         }
 
+        const providerTransactionId = normalizeAbaProviderTransactionId(
+          verified.providerTransactionId,
+        );
+        if (!providerTransactionId) {
+          return json(
+            { error: "ABA PayWay returned no payment reference." },
+            502,
+          );
+        }
+
         const { error: completionError } = await supabase.rpc(
           "streamkit_complete_aba_payment",
           {
             p_payment_id: payment.id,
-            p_provider_transaction_id: verified.providerTransactionId ?? "",
+            p_provider_transaction_id: providerTransactionId,
             p_verified_amount: verified.paymentAmount,
             p_verified_currency: verified.paymentCurrency,
             p_provider_paid_at: paidAt.toISOString(),
@@ -311,6 +322,23 @@ export async function GET(_request: NextRequest, { params }: PaymentContext) {
       .single();
 
     if (completedError) throw completedError;
+
+    // Award fan points on successful Bakong donation
+    if (completedPayment.creator_id && completedPayment.donor_name) {
+      const subscriberId = await resolveSubscriberId(supabase, completedPayment.donor_name);
+      if (subscriberId) {
+        const amountKhr = completedPayment.currency === "KHR" ? completedPayment.amount : 0;
+        const amountUsd = completedPayment.currency === "USD" ? completedPayment.amount : 0;
+        await supabase.rpc("award_fan_points_on_donation", {
+          p_creator_id: completedPayment.creator_id,
+          p_subscriber_id: subscriberId,
+          p_amount_khr: amountKhr,
+          p_amount_usd: amountUsd,
+          p_payment_id: payment.id,
+        });
+      }
+    }
+
     return await paymentResult(supabase, completedPayment);
   } catch {
     return json(
@@ -407,4 +435,17 @@ function parseAbaDate(value: string | null) {
     : `${value.replace(" ", "T")}+07:00`;
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function resolveSubscriberId(
+  supabase: ReturnType<typeof createAdminClient>,
+  donorName: string,
+): Promise<string | null> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .or(`display_name.ilike.${donorName},username.ilike.${donorName}`)
+    .maybeSingle();
+
+  return profile?.id ?? null;
 }

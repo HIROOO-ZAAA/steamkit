@@ -2,6 +2,7 @@
 
 import React, { use, useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { nextSpinWheelRotation } from "@/lib/overlay/spin-wheel-rotation";
 import styles from "./spin-wheel.module.css";
 
 type Slice = { label: string; color?: string };
@@ -26,10 +27,11 @@ export default function SpinWheelOverlay({
   const params = use(searchParams);
   const token = params.token ?? "";
   const [slices, setSlices] = useState<Slice[]>(PLACEHOLDER_SLICES);
+  const [wheelTitle, setWheelTitle] = useState("Donation Wheel");
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [winner, setWinner] = useState<string | null>(null);
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const spinningRef = useRef(false);
 
   // The wheel is rendered from whatever the server last spoke about, so the
@@ -44,10 +46,12 @@ export default function SpinWheelOverlay({
       });
       if (cancelled || error) return;
       const rows = data as { slices?: unknown }[] | null;
-      const parsed = Array.isArray(rows?.[0]?.slices)
-        ? (rows[0].slices as Slice[])
+      const config = rows?.[0] as { slices?: unknown; wheel_title?: string } | undefined;
+      const parsed = Array.isArray(config?.slices)
+        ? (config.slices as Slice[])
         : [];
       if (!cancelled && parsed.length > 0) setSlices(parsed);
+      if (!cancelled && config?.wheel_title) setWheelTitle(config.wheel_title);
     })();
 
     return () => {
@@ -62,77 +66,112 @@ export default function SpinWheelOverlay({
       setSpinning(true);
       setWinner(null);
 
-      const { data, error } = await supabase.rpc("streamkit_spin_wheel", {
-        p_token: token,
-        p_tip_id: tipId,
-      });
+      try {
+        const { data, error } = await supabase.rpc("streamkit_spin_wheel", {
+          p_token: token,
+          p_tip_id: tipId,
+        });
 
-      const row = (
-        data as
-          | {
-              picked_index: number | null;
-              picked_label: string | null;
-              should_spin: boolean;
-              slices: Slice[] | null;
-            }[]
-          | null
-      )?.[0];
+        const row = (
+          data as
+            | {
+                picked_index: number | null;
+                picked_label: string | null;
+                should_spin: boolean;
+                slices: Slice[] | null;
+              }[]
+            | null
+        )?.[0];
 
-      // A sub-threshold tip or one already spun comes back as should_spin
-      // false, which is a normal outcome and not an error worth showing.
-      if (error || !row?.should_spin || row.picked_index === null) {
+        // A sub-threshold tip or one already spun comes back as should_spin
+        // false, which is a normal outcome and not an error worth showing.
+        if (error || !row?.should_spin || row.picked_index === null) {
+          setSpinning(false);
+          spinningRef.current = false;
+          return;
+        }
+
+        // Adopt the server's slice list before animating so the index maps to
+        // the label on screen.
+        if (Array.isArray(row.slices) && row.slices.length > 0) {
+          setSlices(row.slices);
+        }
+
+        const count = row.slices?.length ?? slices.length;
+        setRotation((current) => nextSpinWheelRotation(current, row.picked_index!, count));
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(() => {
+            setSpinning(false);
+            spinningRef.current = false;
+            setWinner(`${tipperName} landed on: ${row.picked_label}!`);
+            resolve();
+          }, 4000);
+        });
+      } catch {
         setSpinning(false);
         spinningRef.current = false;
-        return;
       }
-
-      // Adopt the server's slice list before animating so the index maps to the
-      // label on screen.
-      if (Array.isArray(row.slices) && row.slices.length > 0) {
-        setSlices(row.slices);
-      }
-
-      const count = row.slices?.length ?? slices.length;
-      const sliceDegrees = 360 / Math.max(count, 1);
-      const targetDeg = 360 * 5 + (360 - row.picked_index * sliceDegrees);
-      setRotation(targetDeg);
-
-      setTimeout(() => {
-        setSpinning(false);
-        spinningRef.current = false;
-        setWinner(`${tipperName} landed on: ${row.picked_label}!`);
-      }, 4000);
     },
     [supabase, token, slices.length],
   );
 
   useEffect(() => {
-    const channel = supabase
-      .channel("spin_wheel_events")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "tips" },
-        (payload) => {
-          const newTip = payload.new as {
-            id: string;
-            tipper_name?: string;
-          };
-          void triggerSpin(newTip.id, newTip.tipper_name ?? "Someone");
-        },
-      )
-      .subscribe();
+    if (!token) return;
+    let cancelled = false;
+    let polling = false;
+    let since = new Date().toISOString();
 
+    async function pollRecentTips() {
+      if (cancelled || polling) return;
+      polling = true;
+      try {
+        const { data, error } = await supabase.rpc("streamkit_recent_spin_tips", {
+          p_token: token,
+          p_since: since,
+        });
+        if (cancelled || error || !Array.isArray(data)) return;
+
+        const tips = data as {
+          id: string;
+          tipper_name?: string;
+          payment_status?: string;
+          created_at: string;
+        }[];
+        for (const tip of tips) {
+          if (tip.created_at > since) since = tip.created_at;
+          if (tip.payment_status !== "successful" && tip.payment_status !== "test") continue;
+          await triggerSpin(tip.id, tip.tipper_name ?? "Someone");
+          if (cancelled) return;
+        }
+      } finally {
+        polling = false;
+      }
+    }
+
+    void pollRecentTips();
+    const interval = window.setInterval(() => void pollRecentTips(), 1000);
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      window.clearInterval(interval);
     };
-  }, [supabase, triggerSpin]);
+  }, [supabase, token, triggerSpin]);
+
+  const wheelBackground = `conic-gradient(${slices.map((slice, index) => {
+    const start = (index / slices.length) * 360;
+    const end = ((index + 1) / slices.length) * 360;
+    const fallback = ["#10b981", "#0891b2", "#f59e0b", "#7c3aed"];
+    return `${slice.color ?? fallback[index % fallback.length]} ${start}deg ${end}deg`;
+  }).join(", ")})`;
 
   return (
     <div className={styles.screen}>
+      <h1 className={styles.title}>{wheelTitle}</h1>
       <div className={styles.pointer} />
       <div
         className={styles.wheel}
-        style={{ transform: `rotate(${rotation}deg)` }}
+        style={{ transform: `rotate(${rotation}deg)`, background: wheelBackground }}
+        aria-hidden="true"
       >
         {slices.map((slice, i) => (
           <span
@@ -143,6 +182,7 @@ export default function SpinWheelOverlay({
             {slice.label}
           </span>
         ))}
+        <span className={styles.hub} />
       </div>
 
       {/* Screen-reader announcement so the spin result is not visual-only, and

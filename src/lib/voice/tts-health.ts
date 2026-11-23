@@ -2,8 +2,9 @@ export type TtsObservation = {
   at: string;
   stage: "started" | "provider_audio" | "failed" | "audio_ready";
   result: "started" | "audio" | "failed";
+  voiceSource?: "clone" | "fallback";
   providerStatus?: number;
-  failureKind?: "timeout" | "provider" | "invalid_audio" | "storage";
+  failureKind?: "timeout" | "provider" | "transport" | "invalid_audio" | "storage";
 };
 
 type TtsHealthGlobal = typeof globalThis & {

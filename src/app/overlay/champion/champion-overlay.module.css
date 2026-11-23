@@ -1,0 +1,120 @@
+.overlay {
+  width: 100vw;
+  height: 100vh;
+  background: transparent !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.championContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 32px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+  border-radius: 16px;
+  box-shadow:
+    0 0 40px rgba(255, 215, 0, 0.3),
+    0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 280px;
+  text-align: center;
+}
+
+.championPulse {
+  animation: championPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes championPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 40px rgba(255, 215, 0, 0.3),
+      0 8px 24px rgba(0, 0, 0, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 60px rgba(255, 215, 0, 0.5),
+      0 8px 32px rgba(0, 0, 0, 0.5);
+    transform: scale(1.02);
+  }
+}
+
+.championBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fef08a;
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.2), rgba(255, 215, 0, 0.05));
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.championCrownIcon {
+  color: #fef08a;
+}
+
+.championTrending {
+  color: #fef08a;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.championName {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.championAmount {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #fef08a;
+  text-shadow: 0 2px 8px rgba(255, 215, 0, 0.5);
+}
+
+.championEmptyContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 24px;
+}
+
+.championCrown {
+  color: #64748b;
+  opacity: 0.6;
+}
+
+.championEmpty {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

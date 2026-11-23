@@ -1,17 +1,33 @@
 "use client";
 
-import { useState } from "react";
-import { Badge } from "@/components/ui/Badge";
+import { useEffect, useRef, useState } from "react";
+import { Mic2, MonitorPlay, Play, Volume2 } from "lucide-react";
 import { Panel } from "@/components/ui/Content";
 import { SecondaryButton } from "@/components/ui/Button";
 import styles from "./LandingPreview.module.css";
 
 export default function LandingPreview() {
   const [showAlert, setShowAlert] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   function triggerPreview() {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+
     setShowAlert(true);
-    window.setTimeout(() => setShowAlert(false), 3200);
+    timerRef.current = window.setTimeout(() => {
+      setShowAlert(false);
+      timerRef.current = null;
+    }, 3600);
   }
 
   return (
@@ -26,43 +42,70 @@ export default function LandingPreview() {
             <i />
             <i />
           </span>
-          <span>Kit Steam / OVERLAY PREVIEW</span>
+          <span>LIVE OVERLAY PREVIEW</span>
         </div>
-        <Badge variant="gray">DEMO</Badge>
+        <span className={styles.demoBadge}>SAMPLE</span>
       </div>
+
       <div className={styles.canvas}>
         <div className={styles.canvasMeta}>
-          <span>1920 × 1080</span>
+          <span>OBS / 1920 x 1080</span>
           <span>TRANSPARENT SOURCE</span>
         </div>
-        {showAlert ? (
-          <div className={styles.alertSample} role="status" aria-live="polite">
-            <span className={styles.alertKicker}>SAMPLE SUPPORT EVENT</span>
-            <strong>Thanks for supporting the stream.</strong>
-            <span className={styles.alertAmount}>
-              $5.00 <small>USD</small>
-            </span>
-          </div>
-        ) : (
-          <div className={styles.idleState}>
-            <span className={styles.signalMark} aria-hidden="true">
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-            </span>
-            <strong>Ready for a preview</strong>
-            <span>Trigger a sample alert to see the overlay state.</span>
-          </div>
-        )}
-      </div>
-      <div className={styles.frameFooter}>
-        <div>
-          <span className={styles.eventDot} /> ALERT / SOUND / TTS
+
+        <div className={styles.stage}>
+          {showAlert ? (
+            <div className={styles.alertSample} role="status" aria-live="polite">
+              <span className={styles.alertKicker}>NEW SUPPORT EVENT</span>
+              <strong className={styles.alertName}>Sokha</strong>
+              <p className={styles.alertMessage}>Thanks for the support!</p>
+              <span className={styles.alertAmount}>
+                $5.00 <small>USD</small>
+              </span>
+              <div className={styles.alertChannels}>
+                <span>
+                  <Volume2 size={12} aria-hidden="true" />
+                  Sound
+                </span>
+                <span>
+                  <Mic2 size={12} aria-hidden="true" />
+                  Voice
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.idleState}>
+              <span className={styles.signalMark} aria-hidden="true">
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className={styles.idleKicker}>ALERT CHANNEL READY</span>
+              <strong>Your stream, in focus.</strong>
+              <span>Trigger a sample alert to preview the overlay state.</span>
+            </div>
+          )}
         </div>
+
+        <div className={styles.canvasFooter}>
+          <span>
+            <i className={styles.statusDot} aria-hidden="true" />
+            PREVIEW READY
+          </span>
+          <span>ALERT / GOAL / LEADERBOARD</span>
+        </div>
+      </div>
+
+      <div className={styles.frameFooter}>
+        <span className={styles.frameMeta}>
+          <MonitorPlay size={14} aria-hidden="true" />
+          Paste a browser-source URL into OBS
+        </span>
         <SecondaryButton size="sm" onClick={triggerPreview}>
-          Preview alert
+          <Play size={13} aria-hidden="true" />
+          Trigger sample
         </SecondaryButton>
       </div>
     </Panel>

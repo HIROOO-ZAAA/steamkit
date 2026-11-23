@@ -1,25 +1,24 @@
-import styles from "./primitives.module.css";
+import React from "react";
 
 interface SteamKitMarkProps {
   size?: number;
   className?: string;
 }
 
-export function SteamKitMark({ size = 32, className = "" }: SteamKitMarkProps) {
+export default function SteamKitMark({ size = 24, className = "" }: SteamKitMarkProps) {
   return (
-    <span
-      className={`${styles.nexusMark} ${className}`.trim()}
-      style={{ width: size, height: size }}
-      aria-hidden="true"
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
     >
-    </span>
-  );
-}
-
-export function SteamKitWordmark({ size = 30 }: { size?: number }) {
-  return (
-    <span className={styles.nexusWordmark}>
-      <span>STEAM KIT</span>
-    </span>
+      <path d="M8 6v12M8 12l7-6M8 12l7 6" />
+    </svg>
   );
 }

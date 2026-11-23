@@ -2,8 +2,98 @@ import "server-only";
 
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizeAbaProviderTransactionId } from "@/lib/payments/aba-apv";
 
 export type AbaCurrency = "USD" | "KHR";
+
+export type AbaPaymentStatus =
+  | "APPROVED"
+  | "PENDING"
+  | "DECLINED"
+  | "REFUNDED"
+  | "CANCELLED";
+
+const ABA_STATUS_CODES: Record<
+  string,
+  { status: AbaPaymentStatus; code: number }
+> = {
+  APPROVED: { status: "APPROVED", code: 0 },
+  PENDING: { status: "PENDING", code: 2 },
+  DECLINED: { status: "DECLINED", code: 3 },
+  REFUNDED: { status: "REFUNDED", code: 4 },
+  CANCELLED: { status: "CANCELLED", code: 7 },
+};
+
+const ABA_STATUS_BY_CODE: Record<string, AbaPaymentStatus> = {
+  "0": "APPROVED",
+  "2": "PENDING",
+  "3": "DECLINED",
+  "4": "REFUNDED",
+  "7": "CANCELLED",
+};
+
+export function normalizeAbaPaymentStatus(
+  status: unknown,
+  statusCode?: unknown,
+): AbaPaymentStatus {
+  const normalizedStatus =
+    typeof status === "string"
+      ? status.trim().toUpperCase()
+      : typeof status === "number" && Number.isInteger(status)
+        ? String(status)
+        : "";
+
+  if (statusCode !== undefined) {
+    const numericCode =
+      typeof statusCode === "number"
+        ? statusCode
+        : typeof statusCode === "string" && statusCode.trim()
+          ? Number(statusCode)
+          : Number.NaN;
+
+    const entry = ABA_STATUS_CODES[normalizedStatus];
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        ABA_STATUS_CODES,
+        normalizedStatus,
+      ) ||
+      !entry ||
+      !Number.isInteger(numericCode) ||
+      entry.code !== numericCode
+    ) {
+      throw new Error(
+        "ABA PayWay returned an unknown or inconsistent payment status.",
+      );
+    }
+
+    return entry.status;
+  }
+
+  const textualEntry = ABA_STATUS_CODES[normalizedStatus];
+  if (
+    Object.prototype.hasOwnProperty.call(
+      ABA_STATUS_CODES,
+      normalizedStatus,
+    ) &&
+    textualEntry
+  ) {
+    return textualEntry.status;
+  }
+
+  const codeStatus = ABA_STATUS_BY_CODE[normalizedStatus];
+  if (
+    Object.prototype.hasOwnProperty.call(
+      ABA_STATUS_BY_CODE,
+      normalizedStatus,
+    ) &&
+    codeStatus
+  ) {
+    return codeStatus;
+  }
+
+  throw new Error("ABA PayWay returned an unknown payment status.");
+}
 
 export type AbaQrResult = {
   qrString: string;
@@ -14,7 +104,7 @@ export type AbaQrResult = {
 };
 
 export type AbaTransactionStatus = {
-  paymentStatus: string;
+  paymentStatus: AbaPaymentStatus;
   paymentStatusCode: number;
   paymentAmount: number;
   paymentCurrency: string;
@@ -410,7 +500,7 @@ export async function checkAbaTransaction(
   const result = (await response.json()) as {
     data?: {
       payment_status?: string;
-      payment_status_code?: number;
+      payment_status_code?: number | string;
       payment_amount?: number | string;
       payment_currency?: string;
       transaction_date?: string;
@@ -423,12 +513,25 @@ export async function checkAbaTransaction(
     throw new Error(result.status?.message || "ABA PayWay returned no transaction.");
   }
 
+  if (
+    result.data.payment_status === undefined ||
+    result.data.payment_status_code === undefined ||
+    result.data.payment_status_code === null
+  ) {
+    throw new Error("ABA PayWay returned incomplete payment status data.");
+  }
+
+  const paymentStatus = normalizeAbaPaymentStatus(
+    result.data.payment_status,
+    result.data.payment_status_code,
+  );
+
   return {
-    paymentStatus: result.data.payment_status ?? "PENDING",
+    paymentStatus,
     paymentStatusCode: Number(result.data.payment_status_code),
     paymentAmount: Number(result.data.payment_amount),
     paymentCurrency: result.data.payment_currency ?? "",
     transactionDate: result.data.transaction_date ?? null,
-    providerTransactionId: result.data.apv ?? null,
+    providerTransactionId: normalizeAbaProviderTransactionId(result.data.apv),
   };
 }

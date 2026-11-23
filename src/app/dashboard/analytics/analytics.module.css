@@ -1,36 +1,265 @@
-.page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.15rem; }
-.header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding-bottom: .8rem; border-bottom: 1px solid var(--border-subtle); }
-.icon { display: inline-flex; color: var(--brand-primary); margin-bottom: .35rem; }
-.kicker { margin: 0 0 .3rem; color: var(--brand-primary); font: 700 .72rem Rajdhani, sans-serif; letter-spacing: .14em; }
-.header h1 { margin: 0; font-size: 2rem; }
-.subtitle { margin: .4rem 0 0; color: var(--text-muted); font-size: .88rem; }
-.historyLink, .periodForm button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 38px; border: 1px solid var(--brand-primary); border-radius: 7px; padding: .45rem .75rem; background: rgba(16,185,129,.08); color: var(--brand-primary); font: 700 .75rem Rajdhani, sans-serif; text-decoration: none; cursor: pointer; }
-.historyLink:hover, .periodForm button:hover { background: rgba(16,185,129,.16); }
-.periodPanel { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .9rem 1rem; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-surface); }
-.periodForm { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
-.periodForm label { color: var(--text-secondary); font-size: .8rem; }
-.periodForm select { min-height: 38px; border: 1px solid var(--border-default); border-radius: 6px; padding: 0 .65rem; background: var(--bg-elevated); color: var(--text-primary); }
-.rangeMeta { color: var(--text-muted); font-size: .75rem; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: .9rem; }
-.metricCard { min-width: 0; display: flex; flex-direction: column; gap: .4rem; padding: 1rem 1.1rem; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-surface); }
-.metricCard > span { color: var(--text-secondary); font-size: .78rem; }
-.metricCard strong { overflow-wrap: anywhere; color: var(--text-primary); font: 700 1.65rem Rajdhani, sans-serif; }
-.metricCard small { color: var(--text-muted); font-size: .7rem; line-height: 1.4; }
-.panel { min-width: 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-surface); }
-.panelHead { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: 1rem 1.1rem; border-bottom: 1px solid var(--border-subtle); }
-.panelHead h2 { margin: 0; font-size: 1rem; }
-.panelHead p { margin: .25rem 0 0; color: var(--text-muted); font-size: .75rem; }
-.periodBadge { color: var(--brand-primary); font: 700 .7rem Rajdhani, sans-serif; letter-spacing: .1em; }
-.chartScroll { max-width: 100%; overflow-x: auto; padding: 1rem; }
-.chart { display: grid; align-items: end; gap: .4rem; min-height: 190px; min-width: 0; }
-.barColumn { height: 170px; min-width: 32px; display: grid; grid-template-rows: 16px 1fr 22px; gap: .35rem; justify-items: center; }
-.barCount, .barLabel { color: var(--text-muted); font-size: .65rem; }
-.barTrack { width: min(100%, 26px); height: 100%; display: flex; align-items: flex-end; border-radius: 4px 4px 0 0; background: rgba(148,163,184,.08); }
-.bar { width: 100%; min-height: 4px; border-radius: 4px 4px 0 0; background: var(--brand-primary); }
-.providerList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .65rem; list-style: none; margin: 0; padding: 1rem; }
-.providerList li { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem; border: 1px solid var(--border-subtle); border-radius: 7px; color: var(--text-secondary); font-size: .8rem; }
-.providerList strong { color: var(--text-primary); }
-.empty, .unavailable { margin: 0; padding: 1.2rem; color: var(--text-muted); font-size: .8rem; }
-.error { margin: 0; padding: .8rem 1rem; border: 1px solid #7f1d1d; border-radius: 7px; background: rgba(127,29,29,.2); color: #fecaca; font-size: .8rem; }
-.definition { margin: 0; color: var(--text-muted); font-size: .7rem; line-height: 1.55; }
-@media (max-width: 600px) { .header { align-items: flex-start; flex-direction: column; }.periodPanel { align-items: flex-start; flex-direction: column; }.periodForm { width: 100%; }.periodForm select { flex: 1; }.panelHead { align-items: flex-start; } }
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.historyLink,
+.periodForm button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 38px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  background: var(--dash-surface);
+  color: var(--dash-accent);
+  font: 700 0.72rem "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.historyLink:hover,
+.periodForm button:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.periodPanel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+}
+
+.periodForm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.periodForm label {
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+}
+
+.periodForm select {
+  min-height: 38px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  padding: 0 0.65rem;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+}
+
+.rangeMeta {
+  color: var(--dash-text-muted);
+  font-size: 0.75rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 0.9rem;
+}
+
+.metricCard {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+}
+
+.metricCard > span {
+  color: var(--dash-text-secondary);
+  font-size: 0.78rem;
+}
+
+.metricCard strong {
+  overflow-wrap: anywhere;
+  color: var(--dash-text);
+  font: 700 1.65rem "Rajdhani", sans-serif;
+}
+
+.metricCard small {
+  color: var(--dash-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface);
+}
+
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.panelHead h2 {
+  margin: 0;
+  color: var(--dash-text);
+  font-size: 1rem;
+}
+
+.panelHead p {
+  margin: 0.25rem 0 0;
+  color: var(--dash-text-muted);
+  font-size: 0.75rem;
+}
+
+.periodBadge {
+  color: var(--dash-accent);
+  font: 700 0.7rem "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.chartScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.chart {
+  display: grid;
+  align-items: end;
+  gap: 0.4rem;
+  min-height: 190px;
+  min-width: 0;
+}
+
+.barColumn {
+  height: 170px;
+  min-width: 32px;
+  display: grid;
+  grid-template-rows: 16px 1fr 22px;
+  gap: 0.35rem;
+  justify-items: center;
+}
+
+.barCount,
+.barLabel {
+  color: var(--dash-text-muted);
+  font-size: 0.65rem;
+}
+
+.barTrack {
+  width: min(100%, 26px);
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 4px 4px 0 0;
+  background: var(--dash-surface-raised);
+}
+
+.bar {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 4px 4px 0 0;
+  background: var(--dash-primary);
+}
+
+.providerList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 1rem;
+}
+
+.providerList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+}
+
+.providerList strong {
+  color: var(--dash-text);
+}
+
+.empty,
+.unavailable {
+  margin: 0;
+  padding: 1.2rem;
+  color: var(--dash-text-muted);
+  font-size: 0.8rem;
+}
+
+.error {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--dash-danger-border);
+  border-radius: 8px;
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+  font-size: 0.8rem;
+}
+
+.definition {
+  margin: 0;
+  color: var(--dash-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 600px) {
+  .periodPanel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .periodForm {
+    width: 100%;
+  }
+
+  .periodForm select {
+    flex: 1;
+  }
+
+  .panelHead {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .historyLink,
+  .periodForm button {
+    transition: none;
+  }
+}

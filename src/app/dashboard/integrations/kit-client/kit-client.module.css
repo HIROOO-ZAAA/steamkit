@@ -1,0 +1,749 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0;
+}
+
+.pageInner {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.card {
+  width: 100%;
+  padding: 1.75rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  color: var(--dash-text);
+  box-shadow: var(--dash-shadow-md);
+  font-family: "Inter", sans-serif;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.cardTitle {
+  margin: 0;
+  color: var(--dash-text);
+  font: 700 1.2rem/1.2 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font: 700 0.68rem/1.35 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgeLive {
+  border: 1px solid var(--dash-success-border);
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+}
+
+.badgeLive::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--dash-success);
+  animation: pulseLive 2s ease-in-out infinite;
+}
+
+.badgeMuted {
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+}
+
+@keyframes pulseLive {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.offlineState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+  text-align: center;
+}
+
+.offlineState p {
+  max-width: 52ch;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.offlineState code {
+  padding: 0.2rem 0.45rem;
+  border-radius: 5px;
+  background: var(--dash-surface);
+  color: var(--dash-accent);
+  font: 700 0.78rem/1.4 "Rajdhani", sans-serif;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.hero {
+  display: grid;
+  place-items: center;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface-raised);
+  text-align: center;
+}
+
+.h1 {
+  margin: 0.25rem 0 0;
+  color: var(--dash-text);
+  font: 700 1.5rem/1.15 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.h2 {
+  margin: 0;
+  color: var(--dash-text);
+  font: 700 1rem/1.2 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.subCaption {
+  margin: 0;
+  color: var(--dash-accent);
+  font: 700 0.72rem/1.4 "Rajdhani", sans-serif;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.steps {
+  max-width: 480px;
+  margin: 0 auto;
+  padding-left: 1.2rem;
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.8;
+}
+
+.authSuccess {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--dash-success-border);
+  border-radius: 10px;
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+  font: 600 0.82rem/1.4 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.sectionDesc {
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.scrollList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scroll-behavior: smooth;
+  scrollbar-color: var(--dash-border-strong) transparent;
+}
+
+.row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.row:hover {
+  border-color: var(--dash-border-strong);
+}
+
+.row:focus-visible {
+  border-color: var(--dash-accent);
+  outline: 2px solid var(--dash-accent);
+  outline-offset: 2px;
+}
+
+.rowSelected {
+  border-color: var(--dash-accent);
+  box-shadow: 0 0 0 1px var(--dash-accent);
+}
+
+.activeGroupRow {
+  cursor: default;
+}
+
+.activeGroupRow .rowTitle,
+.activeGroupRow .rowSub {
+  filter: none;
+}
+
+.avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent);
+  font: 700 14px/1 "Rajdhani", sans-serif;
+}
+
+.avatarImg {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.groupInfo {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.rowTitle {
+  overflow: hidden;
+  color: var(--dash-text);
+  font: 700 0.95rem/1.3 "Rajdhani", sans-serif;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  filter: blur(5px);
+  transition: filter 150ms ease;
+}
+
+.rowSub {
+  overflow: hidden;
+  color: var(--dash-text-secondary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  filter: blur(5px);
+  transition: filter 150ms ease;
+}
+
+.row:hover .rowTitle,
+.row:hover .rowSub,
+.row:focus-visible .rowTitle,
+.row:focus-visible .rowSub,
+.rowSelected .rowTitle,
+.rowSelected .rowSub {
+  filter: none;
+}
+
+.checkBadge {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.botInputWrapper {
+  margin-top: 0.25rem;
+}
+
+.input {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.input::placeholder {
+  color: var(--dash-text-muted);
+}
+
+.input:focus-visible {
+  border-color: var(--dash-accent);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.inputLabel {
+  display: block;
+  margin-bottom: 0.375rem;
+  color: var(--dash-text-secondary);
+  font: 700 0.72rem/1.35 "Rajdhani", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.divider {
+  width: 100%;
+  margin: 0.25rem 0;
+  border: 0;
+  border-top: 1px solid var(--dash-border);
+}
+
+.btn {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 8px;
+  font: 700 0.72rem/1 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btnPrimary {
+  border: 1px solid var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  border-color: var(--dash-action-hover);
+  background: var(--dash-action-hover);
+}
+
+.btnSecondary {
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  border-color: var(--dash-accent);
+  color: var(--dash-text);
+}
+
+.btnDanger {
+  border: 1px solid var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.btnDanger:hover:not(:disabled) {
+  border-color: var(--dash-danger);
+}
+
+.btnBlock {
+  width: 100%;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.notice {
+  position: relative;
+  margin-top: 1rem;
+  padding: 0.75rem 2.2rem 0.75rem 1rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+  font-size: 0.78rem;
+}
+
+.noticeText {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.noticeLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.2rem;
+  color: var(--dash-text);
+  font: 700 0.72rem/1.35 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.noticeClose {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dash-text-secondary);
+  cursor: pointer;
+}
+
+.noticeClose:hover {
+  background: var(--dash-surface);
+  color: var(--dash-text);
+}
+
+.centered {
+  margin: 0;
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--dash-border);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.logList {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scroll-behavior: smooth;
+  scrollbar-color: var(--dash-border-strong) transparent;
+}
+
+.logRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.625rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--dash-border);
+  border-left: 3px solid var(--dash-accent);
+  border-radius: 10px;
+  background: var(--dash-surface-raised);
+}
+
+.logEntry {
+  animation: logIn 280ms ease both;
+}
+
+@keyframes logIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.logLeft {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.logTitleLine {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.logAmount {
+  color: var(--dash-success);
+  font: 700 1rem/1.3 "Rajdhani", sans-serif;
+  white-space: nowrap;
+}
+
+.logName {
+  overflow: hidden;
+  color: var(--dash-text);
+  font: 700 0.85rem/1.3 "Rajdhani", sans-serif;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.logMessage {
+  overflow: hidden;
+  margin: 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logRight {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.logMeta {
+  color: var(--dash-text-secondary);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.payBadge {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--dash-success-border);
+  border-radius: 999px;
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+  font: 700 0.68rem/1.4 "Rajdhani", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.statusBar {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--dash-border);
+  color: var(--dash-text-secondary);
+  font: 700 0.7rem/1.4 "Rajdhani", sans-serif;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.warningIcon {
+  color: var(--dash-warning);
+}
+
+.dangerIcon {
+  color: var(--dash-danger);
+}
+
+.accentIcon {
+  color: var(--dash-accent);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+  color: var(--dash-accent);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.qrWrapper {
+  position: relative;
+  display: inline-block;
+  padding: 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: var(--dash-shadow-md);
+}
+
+.qrLogoOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.qrLogoOverlay svg {
+  display: block;
+  filter: drop-shadow(0 4px 12px rgba(0, 136, 204, 0.28));
+}
+
+.qrPlaceholder {
+  display: flex;
+  width: min(252px, 100%);
+  min-height: 244px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 2rem 1rem;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #64748b;
+  box-shadow: var(--dash-shadow-md);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.qrPlaceholder code {
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.scrollList::-webkit-scrollbar,
+.logList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollList::-webkit-scrollbar-thumb,
+.logList::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--dash-border);
+}
+
+.scrollList::-webkit-scrollbar-track,
+.logList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 720px) {
+  .card {
+    padding: 1.25rem;
+  }
+
+  .cardHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cardTitle {
+    font-size: 1rem;
+  }
+
+  .h1 {
+    font-size: 1.25rem;
+  }
+
+  .logRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .logRight {
+    align-items: flex-start;
+  }
+
+  .btnRow > .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .hero {
+    padding: 0.75rem;
+  }
+
+  .qrWrapper {
+    padding: 8px;
+  }
+
+  .qrWrapper > svg {
+    width: 200px;
+    height: 200px;
+  }
+
+  .qrPlaceholder {
+    min-height: 220px;
+  }
+
+  .steps {
+    padding-left: 1rem;
+    font-size: 0.8rem;
+  }
+
+  .authSuccess {
+    font-size: 0.76rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badgeLive::before,
+  .spinner,
+  .logEntry {
+    animation: none;
+  }
+
+  .scrollList,
+  .logList {
+    scroll-behavior: auto;
+  }
+
+  .row,
+  .rowTitle,
+  .rowSub,
+  .btn,
+  .input {
+    transition: none;
+  }
+}

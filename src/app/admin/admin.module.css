@@ -1,0 +1,44 @@
+/* =========================================================
+   Admin layout shell — inherits dashboard tokens
+   ========================================================= */
+
+.adminShell {
+  /* Reuse dashboard-shell tokens */
+}
+
+.skipLink {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  padding: 0.5rem 1rem;
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+  font-weight: 600;
+  border-radius: 0 0 var(--radius-md) 0;
+  z-index: 100;
+  transition: top 150ms ease;
+}
+
+.skipLink:focus {
+  top: 0;
+}
+
+.main {
+  margin-left: var(--sidebar-w, 264px);
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+@media (max-width: 900px) {
+  .main {
+    margin-left: 0;
+    padding: 1rem;
+    padding-top: 70px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skipLink {
+    transition: none;
+  }
+}

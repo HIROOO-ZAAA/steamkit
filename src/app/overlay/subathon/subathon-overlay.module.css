@@ -1,0 +1,114 @@
+.screen {
+  position: relative;
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  place-items: center;
+  overflow: hidden;
+  background: transparent;
+  perspective: 1000px;
+  color: #f4fbff;
+  font-family: Arial, sans-serif;
+}
+
+.timerCard {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: min(560px, 92vw);
+  gap: 0.8rem;
+  justify-items: center;
+  padding: clamp(1.5rem, 4vw, 2.8rem);
+  border: 1px solid rgb(91 234 217 / 65%);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgb(9 25 43 / 93%), rgb(11 45 55 / 88%));
+  box-shadow: 0 20px 70px rgb(0 0 0 / 42%), inset 0 1px rgb(255 255 255 / 12%), 0 0 34px rgb(45 212 191 / 20%);
+  transform: rotateX(3deg) rotateY(-4deg);
+  backdrop-filter: blur(12px);
+  text-align: center;
+}
+
+.kicker {
+  color: #66e5d0;
+  font: 800 0.75rem/1.2 ui-monospace, monospace;
+  letter-spacing: 0.2em;
+}
+
+.timerCard h1 {
+  margin: 0;
+  color: #dffdfa;
+  font-size: clamp(1.1rem, 2vw, 1.55rem);
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 20px rgb(45 212 191 / 48%);
+}
+
+.clock {
+  color: white;
+  font: 800 clamp(3.2rem, 11vw, 7.5rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 28px rgb(45 212 191 / 40%);
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #bdcbd5;
+  font: 800 0.78rem/1 ui-monospace, monospace;
+  letter-spacing: 0.13em;
+}
+
+.live { color: #83f4ca; }
+
+.stateDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.orbit {
+  position: absolute;
+  width: min(72vw, 620px);
+  aspect-ratio: 1;
+  border: 1px solid rgb(94 234 212 / 18%);
+  border-radius: 50%;
+  transform: rotateX(68deg) rotateZ(-16deg);
+  box-shadow: 0 0 42px rgb(45 212 191 / 14%), inset 0 0 35px rgb(45 212 191 / 8%);
+  animation: orbit 18s linear infinite;
+}
+
+.orbit i {
+  position: absolute;
+  top: 50%;
+  left: -0.35rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 20px #5eead4;
+}
+
+.orbit i:nth-child(2) { top: 4%; left: 72%; width: 0.45rem; height: 0.45rem; }
+.orbit i:nth-child(3) { top: 87%; left: 89%; width: 0.35rem; height: 0.35rem; }
+
+.srStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@keyframes orbit { to { transform: rotateX(68deg) rotateZ(344deg); } }
+
+@media (max-width: 520px) {
+  .timerCard { min-width: 90vw; border-radius: 20px; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit { animation: none; }
+}

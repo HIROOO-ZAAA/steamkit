@@ -107,10 +107,19 @@ const senderId = String(botEntity.id);
 const chatTitle = chatEntity.title ?? null;
 const botLabel = paywayBotUsername.replace(/^@/, "");
 
-await supabase.rpc("streamkit_register_local_telegram_sender", {
-  p_token_hash: tokenHash,
-  p_sender_user_id: senderId,
-});
+const { data: registered, error: registerError } = await supabase.rpc(
+  "streamkit_register_local_telegram_sender",
+  {
+    p_token_hash: tokenHash,
+    p_sender_user_id: senderId,
+  },
+);
+if (registerError) {
+  throw new Error(`Sender registration failed: ${registerError.message}`);
+}
+if (registered !== true) {
+  throw new Error("Sender registration was rejected.");
+}
 console.log(`Listening for @${botLabel} messages in chat ${telegramChatId}`);
 
 client.addEventHandler(async (event) => {

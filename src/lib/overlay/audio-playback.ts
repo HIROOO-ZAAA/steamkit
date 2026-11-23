@@ -72,7 +72,7 @@ export type DecodedAudio = {
  * and tests pass a stub.
  */
 export type AudioDecoder = {
-  decode(url: string): Promise<DecodedAudio>;
+  decode(url: string, signal?: AbortSignal): Promise<DecodedAudio>;
 };
 
 /**
@@ -101,12 +101,30 @@ export async function playViaWebAudio(
   timeoutMs: number = PLAYBACK_TIMEOUT_MS,
   onStarted?: () => void,
 ): Promise<PlaybackOutcome> {
+  const startedAt = Date.now();
   let decoded: DecodedAudio;
+  let decodeTimedOut = false;
+  let decodeTimer: ReturnType<typeof setTimeout> | undefined;
+  const decodeController = new AbortController();
   try {
-    decoded = await decoder.decode(url);
+    decoded = await Promise.race([
+      decoder.decode(url, decodeController.signal),
+      new Promise<never>((_, reject) => {
+        decodeTimer = setTimeout(() => {
+          decodeTimedOut = true;
+          decodeController.abort();
+          reject(new Error("audio_decode_timeout"));
+        }, timeoutMs);
+      }),
+    ]);
   } catch {
-    return "error";
+    return decodeTimedOut ? "timeout" : "error";
+  } finally {
+    if (decodeTimer !== undefined) clearTimeout(decodeTimer);
   }
+
+  const playbackBudget = Math.max(0, timeoutMs - (Date.now() - startedAt));
+  if (playbackBudget === 0) return "timeout";
 
   return new Promise<PlaybackOutcome>((resolve) => {
     let settled = false;
@@ -130,7 +148,7 @@ export async function playViaWebAudio(
         // Already finished, or the source never started.
       }
       settleWith("timeout");
-    }, timeoutMs);
+    }, playbackBudget);
 
     /** Declared after the timer so it can close over it; hoisted for the callback. */
     function settleWith(result: PlaybackOutcome): void {
@@ -267,4 +285,41 @@ export function playAudioToEnd(
       notifyStarted();
     }
   });
+}
+
+/**
+ * Retries browser audio through Web Audio only when HTML media playback was
+ * explicitly blocked by autoplay policy. Other failures and stalls are not
+ * replayed, because the original element may already have emitted part of the
+ * clip and replaying it could duplicate donor speech.
+ */
+export async function playAudioWithAutoplayFallback(
+  audio: PlayableAudio,
+  url: string,
+  decoder: AudioDecoder,
+  timeoutMs: number = PLAYBACK_TIMEOUT_MS,
+  onDiagnostic?: (diagnostic: PlaybackDiagnostic) => void,
+  onFallback?: (outcome: PlaybackOutcome) => void,
+): Promise<PlaybackOutcome> {
+  let primaryErrorName: string | undefined;
+  const primaryOutcome = await playAudioToEnd(audio, timeoutMs, (diagnostic) => {
+    primaryErrorName = diagnostic.errorName;
+    try {
+      onDiagnostic?.(diagnostic);
+    } catch {
+      // Diagnostics must not alter the playback result.
+    }
+  });
+
+  if (primaryOutcome !== "error" || primaryErrorName !== "NotAllowedError") {
+    return primaryOutcome;
+  }
+
+  const fallbackOutcome = await playViaWebAudio(url, decoder, timeoutMs);
+  try {
+    onFallback?.(fallbackOutcome);
+  } catch {
+    // Diagnostics must not alter the playback result.
+  }
+  return fallbackOutcome;
 }

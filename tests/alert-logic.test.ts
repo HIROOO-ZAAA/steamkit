@@ -5,6 +5,7 @@ import {
   ALERT_DURATION_SECONDS,
   amountForTierTest,
   applyTier,
+  getAlertCardStyle,
   highlightText,
   parseTemplate,
   pickTier,
@@ -67,6 +68,21 @@ const base = (over: Partial<AlertSettings> = {}): AlertSettings => ({
   text_delay: 0,
   donor_avatar: "🦔",
   ...over,
+});
+
+describe("alert card style", () => {
+  it("keeps the alert transparent when the card is disabled", () => {
+    assert.equal(getAlertCardStyle({ enable_card: false, bg_color: "#123456" }), undefined);
+  });
+
+  it("uses the saved card color and a black default when enabled", () => {
+    assert.deepEqual(getAlertCardStyle({ enable_card: true, bg_color: "#123456" }), {
+      backgroundColor: "#123456",
+    });
+    assert.deepEqual(getAlertCardStyle({ enable_card: true }), {
+      backgroundColor: "#000000",
+    });
+  });
 });
 
 describe("parseTemplate", () => {

@@ -19,8 +19,10 @@ import {
 import {
   eventStatusLabel,
   telegramBridgeSnapshot,
+  ttsHealthSnapshot,
   type HealthLevel,
 } from "@/lib/dashboard/health";
+import PageHeader from "@/components/ui/PageHeader";
 import styles from "./health.module.css";
 
 const BRIDGE = "http://127.0.0.1:3113";
@@ -32,8 +34,9 @@ type Observation = {
   at: string;
   stage: "started" | "provider_audio" | "failed" | "audio_ready";
   result: "started" | "audio" | "failed";
+  voiceSource?: "clone" | "fallback";
   providerStatus?: number;
-  failureKind?: "timeout" | "provider" | "invalid_audio" | "storage";
+  failureKind?: "timeout" | "provider" | "transport" | "invalid_audio" | "storage";
 };
 type HealthPayload = {
   checkedAt: string;
@@ -42,7 +45,7 @@ type HealthPayload = {
   tts: {
     configured: boolean;
     enabled: boolean | null;
-    cloneSelected: boolean;
+    cloneReadiness: "ready" | "not_selected" | "needs_setup" | "unknown";
     observation: Observation | null;
     detail: string;
   };
@@ -61,35 +64,6 @@ function StatusIcon({ level }: { level: HealthLevel }) {
   if (level === "degraded") return <AlertTriangle aria-hidden="true" />;
   if (level === "offline") return <XCircle aria-hidden="true" />;
   return <CircleHelp aria-hidden="true" />;
-}
-
-function ttsState(data: HealthPayload["tts"]): { level: HealthLevel; label: string; detail: string } {
-  if (!data.configured) {
-    return { level: "degraded", label: "Not configured", detail: "The server reports that the TTS backend is not configured." };
-  }
-  if (data.enabled === false) {
-    return { level: "degraded", label: "Disabled", detail: "Text-to-speech is off in the saved alert settings." };
-  }
-  if (data.observation?.result === "audio") {
-    return { level: "healthy", label: "Audio returned", detail: data.detail };
-  }
-  if (data.observation?.result === "failed") {
-    const reason = data.observation.failureKind === "timeout"
-      ? "The latest synthesis timed out."
-      : data.observation.failureKind === "invalid_audio"
-        ? "The provider returned audio in an unexpected format."
-        : data.observation.failureKind === "storage"
-          ? "The audio could not be stored or signed for playback."
-          : data.observation.providerStatus
-            ? `The provider returned HTTP ${data.observation.providerStatus}.`
-            : "The latest synthesis failed.";
-    return { level: "degraded", label: "Last synthesis failed", detail: reason };
-  }
-  return {
-    level: "unknown",
-    label: data.observation ? "Synthesis in progress" : "No result yet",
-    detail: data.observation ? "A synthesis request started; no result has been recorded yet." : data.detail,
-  };
 }
 
 export default function HealthDashboardPage() {
@@ -159,16 +133,19 @@ export default function HealthDashboardPage() {
     return () => window.clearTimeout(timer);
   }, [previewing]);
 
-  const tts = data ? ttsState(data.tts) : { level: "unknown" as const, label: "Loading", detail: "Checking available TTS signals." };
+  const tts = data ? ttsHealthSnapshot(data.tts) : { level: "unknown" as const, label: "Loading", detail: "Checking available TTS signals." };
   const issues = [
     ...(data?.issues ?? []),
     ...(data?.tts.configured === false ? ["TTS backend is not configured."] : []),
     ...(data?.tts.enabled === false ? ["Text-to-speech is disabled in saved alert settings."] : []),
+    ...(data?.tts.cloneReadiness === "not_selected" ? ["No enabled voice clone is selected. Choose one in Voice Settings before testing cloned speech."] : []),
+    ...(data?.tts.cloneReadiness === "needs_setup" ? ["The selected voice clone is not ready to speak. Review it in Voice Settings."] : []),
+    ...(data?.tts.cloneReadiness === "unknown" ? ["The selected voice clone could not be verified."] : []),
     ...(data?.tts.observation?.result === "failed" ? [tts.detail] : []),
     ...(bridge.level === "degraded" ? [bridge.detail] : []),
   ];
 
-  const cards: Array<{ title: string; level: HealthLevel; label: string; detail: string; icon: ReactNode; meta?: string }> = [
+  const cards: Array<{ title: string; level: HealthLevel; label: string; detail: string; icon: ReactNode; meta?: string; action?: { href: string; label: string } }> = [
     {
       title: "Telegram bridge",
       level: bridge.level,
@@ -184,6 +161,12 @@ export default function HealthDashboardPage() {
       detail: tts.detail,
       icon: <AudioLines aria-hidden="true" />,
       meta: data?.tts.observation ? `Last result: ${timeLabel(data.tts.observation.at)}` : "Last result: none observed on this app process",
+      action: data?.tts.cloneReadiness === "not_selected" || data?.tts.cloneReadiness === "needs_setup"
+        ? {
+            href: "/dashboard/voice-settings",
+            label: data.tts.cloneReadiness === "not_selected" ? "Choose a voice clone" : "Fix selected clone",
+          }
+        : undefined,
     },
     {
       title: "OBS overlay",
@@ -199,25 +182,33 @@ export default function HealthDashboardPage() {
       label: data?.database.level === "healthy" ? "Responding" : data?.database.level === "degraded" ? "Degraded" : "Unknown",
       detail: data?.database.detail ?? "Waiting for authenticated database status checks.",
       icon: <Server aria-hidden="true" />,
-      meta: data?.tts.cloneSelected === null ? "Saved clone selection: unable to check" : data?.tts.cloneSelected ? "Saved clone selection: enabled" : data ? "Saved clone selection: none enabled" : "Saved clone selection: checking",
+      meta: data?.tts.cloneReadiness === "unknown"
+        ? "Saved clone selection: unable to verify"
+        : data?.tts.cloneReadiness === "ready"
+          ? "Saved clone selection: ready to speak"
+          : data?.tts.cloneReadiness === "needs_setup"
+            ? "Saved clone selection: needs setup"
+            : data
+              ? "Saved clone selection: none enabled"
+              : "Saved clone selection: checking",
     },
   ];
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>{"// STREAMKIT STATUS"}</p>
-          <h1>Health &amp; Alerts</h1>
-          <p className={styles.subtitle}>Service signals and recent alert processing, with unknown states shown when a check is unavailable.</p>
-        </div>
-        <div className={styles.headerActions}>
-          <span className={styles.checkedAt}><Clock3 size={14} aria-hidden="true" /> Last checked: {timeLabel(data?.checkedAt)}</span>
-          <button type="button" className={styles.refreshButton} onClick={() => { setLoading(true); void refresh(); }} disabled={loading}>
-            <RefreshCw size={15} className={loading ? styles.spin : ""} aria-hidden="true" /> Refresh
-          </button>
-        </div>
-      </header>
+    <div className={styles.page}>
+      <PageHeader
+        eyebrow="Steam Kit // Health"
+        title="Health & Alerts"
+        description="Service signals and recent alert processing, with unknown states shown when a check is unavailable."
+        actions={
+          <div className={styles.headerActions}>
+            <span className={styles.checkedAt}><Clock3 size={14} aria-hidden="true" /> Last checked: {timeLabel(data?.checkedAt)}</span>
+            <button type="button" className={styles.refreshButton} onClick={() => { setLoading(true); void refresh(); }} disabled={loading}>
+              <RefreshCw size={15} className={loading ? styles.spin : ""} aria-hidden="true" /> Refresh
+            </button>
+          </div>
+        }
+      />
 
       {error && <div className={styles.errorBanner} role="alert">{error}</div>}
 
@@ -231,6 +222,7 @@ export default function HealthDashboardPage() {
             <h2>{card.title}</h2>
             <p>{card.detail}</p>
             {card.meta && <span className={styles.meta}>{card.meta}</span>}
+            {card.action && <Link href={card.action.href} className={styles.cardAction}>{card.action.label}<ExternalLink size={13} aria-hidden="true" /></Link>}
           </article>
         ))}
       </section>
@@ -276,7 +268,7 @@ export default function HealthDashboardPage() {
           </div>
           <div className={styles.previewActions}>
             <button type="button" className={styles.primaryButton} onClick={() => setPreviewing(true)}>Preview locally</button>
-            <Link href="/dashboard/alerts" className={styles.secondaryButton}>Open alert test controls <ExternalLink size={14} aria-hidden="true" /></Link>
+            <Link href="/dashboard/widgets/alerts" className={styles.secondaryButton}>Open alert test controls <ExternalLink size={14} aria-hidden="true" /></Link>
           </div>
         </article>
       </section>
@@ -293,6 +285,6 @@ export default function HealthDashboardPage() {
         )}
         <p className={styles.privacyNote}>Provider text, private URLs, tokens, donor messages, and raw database errors are never displayed here.</p>
       </section>
-    </main>
+    </div>
   );
 }

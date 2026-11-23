@@ -1,0 +1,20 @@
+.notice {
+  width: 100%;
+  max-width: 1560px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--dash-warning-border);
+  border-radius: 12px;
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.notice svg {
+  flex: none;
+  margin-top: 1px;
+}

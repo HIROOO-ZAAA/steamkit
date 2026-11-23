@@ -89,6 +89,9 @@ const state = {
   listening: null,
 };
 
+// Identifies which attached listener currently owns the public listening state.
+let activeListenerOwner = null;
+
 /**
  * Retry policy for boot() after a transport failure.
  *
@@ -110,7 +113,13 @@ function isTransientNetworkError(message) {
   );
 }
 
-let resolve2fa = null;
+let pending2fa = null;
+
+function settlePending2fa(result) {
+  const pending = pending2fa;
+  pending2fa = null;
+  pending?.settle(result);
+}
 let session = new StringSession(loadSession());
 let client = new TelegramClient(session, apiId, apiHash, { connectionRetries: 5 });
 
@@ -122,10 +131,14 @@ async function boot() {
         err.errorMessage = "RESTART_AUTH_WITH_QR";
         throw err;
       },
-      password: async (hint) => {
+      password: async () => {
         state.needs2fa = true;
         state.status = "password";
-        return await new Promise((resolve) => { resolve2fa = resolve; });
+        return await new Promise((resolve) => {
+          let settle;
+          const verified = new Promise((done) => { settle = done; });
+          pending2fa = { resolve, verified, settle };
+        });
       },
       qrCode: async ({ token }) => {
         state.status = "qr";
@@ -158,6 +171,7 @@ async function boot() {
     state.status = "groups";
     state.qr = null;
     state.needs2fa = false;
+    settlePending2fa({ ok: true });
     console.log(`Signed in. ${state.groups.length} groups available.`);
 
     // Resume ABA listening from the saved config. runResumeSafely guarantees no
@@ -167,6 +181,7 @@ async function boot() {
     runResumeSafely(resumeListeningFromConfig, { log: (m) => console.error(`[resume] ${m}`) });
   } catch (err) {
     const msg = String(err?.message ?? err ?? "");
+    settlePending2fa({ ok: false, error: msg });
     // A QR token only means anything while the socket to Telegram is alive.
     // Once the connection is gone the phone can scan it and nothing will ever
     // happen, because the bridge cannot reach Telegram to validate it. Serving
@@ -214,7 +229,10 @@ async function boot() {
  * Body is unchanged from the original implementation: same sender filtering,
  * same parse, same ingest RPC.
  */
-async function attachListener({ agentToken, chatId, botUsername }) {
+async function attachListener(
+  { agentToken, chatId, botUsername },
+  { isCurrent } = {},
+) {
   const tokenHash = createHash("sha256").update(agentToken).digest("hex");
   const rawChatId = String(chatId);
   const chatIdNum = BigInt(rawChatId.startsWith("-") ? rawChatId : `-100${rawChatId}`);
@@ -223,41 +241,89 @@ async function attachListener({ agentToken, chatId, botUsername }) {
   const senderId = String(botEntity.id);
   const chatTitle = chatEntity.title ?? null;
 
-  // Register before attaching, and fail closed on a rejected registration: the
-  // ingest RPC gates on expected_sender_user_id, so a handler that runs against
-  // an unregistered token would silently drop every donation.
-  const { error: registerError } = await supabase.rpc("streamkit_register_local_telegram_sender", {
-    p_token_hash: tokenHash,
-    p_sender_user_id: senderId,
-  });
+  // Register before attaching, and fail closed on a rejected registration.
+  const { data: registered, error: registerError } = await supabase.rpc(
+    "streamkit_register_local_telegram_sender",
+    {
+      p_token_hash: tokenHash,
+      p_sender_user_id: senderId,
+    },
+  );
+
   if (registerError) {
     throw new Error(`Sender registration failed: ${registerError.message}`);
   }
 
-  // Everything above can throw without leaving a handler behind. From here on,
-  // a throw would strand an attached handler while the guard still considers the
-  // attempt failed -- and the retry would attach a SECOND handler, double
-  // ingesting every ABA message. So the handler is tracked and removed on any
-  // failure past this point.
+  if (registered !== true) {
+    throw new Error("Sender registration was rejected.");
+  }
+
+  // Each attachment has a unique owner. An old attachment must never clear
+  // the public state belonging to a newer attachment for the same chat/bot.
+  const listenerOwner = {};
   let attachedHandler = null;
+  let committed = false;
+  let detached = false;
+
   const detach = () => {
-    if (!attachedHandler) return;
-    try {
-      client.removeEventHandler(attachedHandler);
-    } catch (err) {
-      console.error(`[resume] failed to detach handler during cleanup: ${err?.message ?? err}`);
+    if (detached) return;
+    detached = true;
+    committed = false;
+
+    if (attachedHandler) {
+      try {
+        client.removeEventHandler(attachedHandler);
+      } catch (err) {
+        console.error(
+          `[resume] failed to detach handler during cleanup: ${err?.message ?? err}`,
+        );
+      }
+      attachedHandler = null;
     }
-    attachedHandler = null;
+
+    if (activeListenerOwner === listenerOwner) {
+      activeListenerOwner = null;
+      state.listening = null;
+
+      if (state.status === "listening") {
+        state.status = "groups";
+      }
+    }
+  };
+
+  const commit = () => {
+    if (detached) {
+      throw new Error("Cannot commit a detached Telegram listener.");
+    }
+
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      throw new Error("Cannot commit a superseded Telegram listener.");
+    }
+
+    if (committed) return;
+
+    committed = true;
+    activeListenerOwner = listenerOwner;
+    state.status = "listening";
+    state.listening = { chatId, botUsername };
+
+    console.log(`Listening for @${botUsername} in ${chatId}`);
   };
 
   try {
     attachedHandler = async (event) => {
+      // Do not process messages until the guard approves this attachment.
+      if (!committed || detached) return;
+
       try {
         const message = event.message;
         if (!message?.message) return;
+
         const sender = await message.getSender();
         console.log(`[telegram] message received chars=${message.message.length}`);
+
         if (String(sender?.id) !== senderId) return;
+
         const parsed = parseAbaMessage(message.message);
         const { data, error } = await supabase.rpc("streamkit_record_parsed_aba_tip", {
           p_token_hash: tokenHash,
@@ -267,19 +333,29 @@ async function attachListener({ agentToken, chatId, botUsername }) {
           p_sender_user_id: senderId,
           p_sender_username: botUsername.replace(/^@/, ""),
           p_message_text: message.message,
-          p_telegram_sent_at: message.date ? new Date(message.date * 1000).toISOString() : null,
+          p_telegram_sent_at: message.date
+            ? new Date(message.date * 1000).toISOString()
+            : null,
           p_tipper_name: parsed?.donor ?? "Anonymous",
           p_amount: parsed?.amount ?? 0,
           p_currency: parsed?.currency ?? "USD",
           p_tip_message: parsed?.message ?? "",
         });
-        if (error) console.error("[ingest] error:", error.message);
-        else if (data) {
-          if (!data.accepted) console.log(`[ingest] skipped (${data.reason ?? "n/a"}) ${message.id}`);
-          else if (data.duplicate) console.log(`[ingest] duplicate skipped ${message.id}`);
-          else if (parsed)
-            console.log(`[ingest] tip recorded message_present=${Boolean(parsed.message)} message_chars=${parsed.message?.length ?? 0}`);
-          else console.log(`[ingest] logged, no tip (no amount parsed) ${message.id}`);
+
+        if (error) {
+          console.error("[ingest] error:", error.message);
+        } else if (data) {
+          if (!data.accepted) {
+            console.log(`[ingest] skipped (${data.reason ?? "n/a"}) ${message.id}`);
+          } else if (data.duplicate) {
+            console.log(`[ingest] duplicate skipped ${message.id}`);
+          } else if (parsed) {
+            console.log(
+              `[ingest] tip recorded message_present=${Boolean(parsed.message)} message_chars=${parsed.message?.length ?? 0}`,
+            );
+          } else {
+            console.log(`[ingest] logged, no tip (no amount parsed) ${message.id}`);
+          }
         }
       } catch (err) {
         console.error("Handler error:", err.message);
@@ -291,25 +367,12 @@ async function attachListener({ agentToken, chatId, botUsername }) {
       new NewMessage({ incoming: true, chats: [chatIdNum], fromUsers: [botEntity] }),
     );
   } catch (err) {
-    // addEventHandler threw, so nothing was registered. Clear the tracker so
-    // detach() cannot try to remove a handler this client never had.
-    attachedHandler = null;
-    throw err;
-  }
-
-  try {
-    state.status = "listening";
-    state.listening = { chatId, botUsername };
-  } catch (err) {
-    // Attached, but this attempt is failing. Leaving the handler in place would
-    // let a retry attach a second one and double-ingest every message.
     detach();
     throw err;
   }
 
-  console.log(`Listening for @${botUsername} in ${chatId}`);
-  // Returned so the caller can detach explicitly, e.g. on logout.
-  return { detach };
+  // The guard commits only after confirming that this attempt is current.
+  return { commit, detach };
 }
 
 /**
@@ -404,10 +467,30 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/2fa") {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      const { password } = JSON.parse(body || "{}");
-      if (resolve2fa && password) resolve2fa(password);
-      json(res, 200, { ok: true }, cors);
+    req.on("end", async () => {
+      let password;
+      try {
+        ({ password } = JSON.parse(body || "{}"));
+      } catch {
+        return json(res, 400, { error: "Invalid request." }, cors);
+      }
+      const pending = pending2fa;
+      if (!pending) {
+        return json(res, 400, { error: "Two-step verification is not pending." }, cors);
+      }
+      if (typeof password !== "string" || !password) {
+        return json(res, 400, { error: "Password is required." }, cors);
+      }
+      pending.resolve(password);
+      try {
+        const result = await pending.verified;
+        if (!result.ok) {
+          return json(res, 400, { error: result.error || "Two-step verification failed." }, cors);
+        }
+        return json(res, 200, { ok: true }, cors);
+      } catch (err) {
+        return json(res, 500, { error: err.message }, cors);
+      }
     });
     return;
   }
@@ -431,7 +514,7 @@ const server = createServer(async (req, res) => {
       state.listening = null;
       state.error = null;
       state.needs2fa = false;
-      resolve2fa = null;
+      settlePending2fa({ ok: false, error: "Telegram login was reset." });
       // The old client and its handler are gone with client.destroy() above, so
       // the guard only needs re-opening -- nothing to detach.
       listenGuard.reset();
@@ -515,7 +598,7 @@ const server = createServer(async (req, res) => {
         json(res, 200, {
           ok: true,
           alreadyListening: result.resumed === false,
-          switched: mustReplace,
+          switched: mustReplace || result.replaced === true,
         }, cors);
       } catch (err) {
         // Only claim "groups" when nothing is attached. If a live listener

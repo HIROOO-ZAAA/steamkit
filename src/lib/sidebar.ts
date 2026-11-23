@@ -5,7 +5,7 @@
  * It lives here rather than being exported from DashboardNav.tsx because a
  * Server Component cannot pull values out of a "use client" module. The two
  * halves MUST agree: the bootstrap below writes `--sidebar-w` before first
- * paint, and dashboard/layout.module.css reads it with a 330px fallback. If the
+ * paint, and dashboard/layout.module.css reads it with a 288px fallback. If the
  * two ever disagree the dashboard content jumps sideways on load.
  */
 
@@ -13,10 +13,10 @@
 export const SIDEBAR_COLLAPSE_KEY = "streamkit:sidebar-collapsed";
 
 /** Sidebar width when expanded, matching the fallback in layout.module.css. */
-export const SIDEBAR_W = "330px";
+export const SIDEBAR_W = "288px";
 
 /** Sidebar width when collapsed. */
-export const SIDEBAR_W_COLLAPSED = "96px";
+export const SIDEBAR_W_COLLAPSED = "88px";
 
 /**
  * Runs before first paint to widen the sidebar's content margin for users who

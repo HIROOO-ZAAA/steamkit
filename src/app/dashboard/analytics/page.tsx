@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ChartNoAxesCombined, Clock3 } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import {
   ANALYTICS_PERIODS,
@@ -10,6 +10,7 @@ import {
   summarizeAnalyticsPayments,
   type AnalyticsPayment,
 } from "@/lib/dashboard/analytics";
+import PageHeader from "@/components/ui/PageHeader";
 import styles from "./analytics.module.css";
 
 type Props = { searchParams: Promise<{ days?: string }> };
@@ -65,16 +66,17 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const hasError = Boolean(completedResult.error || unsuccessfulResult.error);
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.icon} aria-hidden="true"><ChartNoAxesCombined size={20} strokeWidth={1.8} /></span>
-          <p className={styles.kicker}>{"// PAYMENT ANALYTICS"}</p>
-          <h1>Analytics</h1>
-          <p className={styles.subtitle}>Payment performance based on completed transactions recorded for your account.</p>
-        </div>
-        <Link className={styles.historyLink} href="/dashboard/alert-history"><Clock3 size={15} aria-hidden="true" /> Alert history</Link>
-      </header>
+    <div className={styles.page}>
+      <PageHeader
+        eyebrow="Steam Kit // Analytics"
+        title="Analytics"
+        description="Payment performance based on completed transactions recorded for your account."
+        actions={
+          <Link className={styles.historyLink} href="/dashboard/alert-history">
+            <Clock3 size={15} aria-hidden="true" /> Alert history
+          </Link>
+        }
+      />
 
       <section className={styles.periodPanel} aria-label="Analytics date range">
         <form action="/dashboard/analytics" className={styles.periodForm}>
@@ -164,6 +166,6 @@ export default async function AnalyticsPage({ searchParams }: Props) {
       </section>
 
       <p className={styles.definition}>Definitions: revenue is the sum of completed/successful payment transaction amounts by currency; source and trend counts use those same transactions. Unsuccessful includes failed, expired, canceled, and review-required statuses. Pending transactions are excluded.</p>
-    </main>
+    </div>
   );
 }

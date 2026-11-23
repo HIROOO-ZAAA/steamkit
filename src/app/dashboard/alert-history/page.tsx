@@ -1,29 +1,25 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import {
-  ALERT_HISTORY_PAGE_SIZE,
-  alertHistoryStatusClass,
-  alertHistorySourceLabel,
-  alertHistoryStatusLabel,
-  normalizeAlertHistoryFilters,
-} from "@/lib/overlay/alert-history";
-import { ChevronLeft, ChevronRight, Clock3, Search, SlidersHorizontal } from "lucide-react";
-import styles from "./history.module.css";
+import { ArrowLeft, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import PageHeader from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import styles from "./alert-history.module.css";
 
-type Props = {
-  searchParams: Promise<{ page?: string; status?: string; source?: string; q?: string }>;
+type AlertHistoryPageProps = {
+  searchParams: Promise<{ page?: string; type?: string; q?: string }>;
 };
 
-type AlertEvent = {
-  created_at: string;
-  payment_status: string | null;
-  payment_method: string | null;
-};
+const PAGE_SIZE = 25;
+const VALID_TYPES = ["donation", "subscriber", "bits", "raid", "host", "follow", "cheer"] as const;
 
-export default async function AlertHistoryPage({ searchParams }: Props) {
+export default async function AlertHistoryPage({ searchParams }: AlertHistoryPageProps) {
   const params = await searchParams;
-  const filters = normalizeAlertHistoryFilters(params);
+  const pageNumber = Math.max(1, Number.parseInt(params.page || "1", 10) || 1);
+  const type = VALID_TYPES.includes(params.type as (typeof VALID_TYPES)[number])
+    ? params.type!
+    : "all";
+  const search = (params.q || "").trim().slice(0, 80);
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,113 +27,162 @@ export default async function AlertHistoryPage({ searchParams }: Props) {
   if (!user) redirect("/auth");
 
   let query = supabase
-    .from("tips")
-    .select("created_at, payment_status, payment_method", { count: "exact" })
-    .eq("creator_id", user.id)
+    .from("alert_history")
+    .select(
+      "id, alert_type, payload, status, created_at",
+      { count: "exact" },
+    )
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (filters.status === "completed") query = query.in("payment_status", ["completed", "successful"]);
-  else if (filters.status !== "all") query = query.eq("payment_status", filters.status);
+  if (type !== "all") query = query.eq("alert_type", type);
+  if (search) query = query.ilike("payload->>donor_name", `%${search}%`);
 
-  if (filters.source === "aba") query = query.in("payment_method", ["aba", "aba_payway"]);
-  else if (filters.source === "bakong" || filters.source === "test") query = query.eq("payment_method", filters.source);
-  else if (filters.source === "other") query = query.not("payment_method", "in", '("aba","aba_payway","bakong","test")');
+  const { data: alerts, count, error } = await query.range(
+    (pageNumber - 1) * PAGE_SIZE,
+    pageNumber * PAGE_SIZE - 1,
+  );
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
-  if (filters.query) query = query.ilike("payment_method", `%${filters.query}%`);
-
-  const start = (filters.page - 1) * ALERT_HISTORY_PAGE_SIZE;
-  const { data, count, error } = await query.range(start, start + ALERT_HISTORY_PAGE_SIZE - 1);
-  const events = (data ?? []) as AlertEvent[];
-  const totalPages = Math.max(1, Math.ceil((count ?? 0) / ALERT_HISTORY_PAGE_SIZE));
-
-  function pageUrl(page: number) {
+  const pageUrl = (nextPage: number) => {
     const next = new URLSearchParams();
-    if (filters.status !== "all") next.set("status", filters.status);
-    if (filters.source !== "all") next.set("source", filters.source);
-    if (filters.query) next.set("q", filters.query);
-    if (page > 1) next.set("page", String(page));
-    const search = next.toString();
-    return `/dashboard/alert-history${search ? `?${search}` : ""}`;
-  }
+    if (type !== "all") next.set("type", type);
+    if (search) next.set("q", search);
+    if (nextPage > 1) next.set("page", String(nextPage));
+    const queryString = next.toString();
+    return `/dashboard/alert-history${queryString ? `?${queryString}` : ""}`;
+  };
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>{"// ALERT RECORDS"}</p>
-          <h1>Alert History</h1>
-          <p className={styles.subtitle}>Review recent donation and test-alert delivery records.</p>
-        </div>
-        <Link className={styles.templateLink} href="/dashboard/alerts">Edit alert template</Link>
-      </header>
+    <div className={styles.page}>
+      <PageHeader
+        eyebrow="Steam Kit // Stream Engagement"
+        title="Alert History"
+        description="Review every alert fired to your overlay, including test events."
+        actions={
+          <Button asChild variant="ghost">
+            <Link href="/dashboard/widgets/alerts">
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back to Alert Config
+            </Link>
+          </Button>
+        }
+      />
 
-      <section className={styles.panel}>
-        <form className={styles.filters} action="/dashboard/alert-history">
+      <section className={styles.filterBar} aria-label="Alert history filters">
+        <form action="/dashboard/alert-history" className={styles.filterForm}>
           <label className={styles.search}>
             <Search size={16} aria-hidden="true" />
-            <input name="q" defaultValue={filters.query} maxLength={50} placeholder="Search source (ABA, Bakong)…" />
+            <input
+              name="q"
+              defaultValue={search}
+              placeholder="Search by donor name..."
+              aria-label="Search by donor name"
+            />
           </label>
-          <label className={styles.filterField}>
-            <span>Status</span>
-            <select name="status" defaultValue={filters.status}>
-              <option value="all">All statuses</option>
-              <option value="completed">Completed</option>
-              <option value="test">Test</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="failed">Failed</option>
-              <option value="review_required">Needs review</option>
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span>Source</span>
-            <select name="source" defaultValue={filters.source}>
-              <option value="all">All sources</option>
-              <option value="aba">ABA PayWay</option>
-              <option value="bakong">Bakong</option>
-              <option value="test">Test alert</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <button className={styles.applyButton} type="submit"><SlidersHorizontal size={15} aria-hidden="true" /> Apply</button>
+          <select name="type" defaultValue={type} aria-label="Alert type">
+            <option value="all">All types</option>
+            {VALID_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </option>
+            ))}
+          </select>
+          <Button type="submit">
+            <Filter size={14} aria-hidden="true" />
+            Apply
+          </Button>
         </form>
-
-        {error ? (
-          <div className={styles.error} role="alert">Could not load alert history. Check your connection and try again.</div>
-        ) : events.length ? (
-          <>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead><tr><th>Time</th><th>Source</th><th>Summary</th><th>Status</th></tr></thead>
-                <tbody>
-                  {events.map((event, index) => (
-                    <tr key={`${event.created_at}-${index}`}>
-                      <td><time dateTime={event.created_at}><Clock3 size={14} aria-hidden="true" />{new Date(event.created_at).toLocaleString()}</time></td>
-                      <td>{alertHistorySourceLabel(event.payment_method)}</td>
-                      <td>{event.payment_status === "test" ? "Test alert" : "Donation alert"}</td>
-                      <td><span className={`${styles.status} ${styles[alertHistoryStatusClass(event.payment_status)] ?? styles.status_unknown}`}>{alertHistoryStatusLabel(event.payment_status)}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <nav className={styles.pagination} aria-label="Alert history pages">
-              <span>{count ?? 0} records · Page {filters.page} of {totalPages}</span>
-              <div>
-                {filters.page > 1 ? <Link href={pageUrl(filters.page - 1)}><ChevronLeft size={15} /> Previous</Link> : <span className={styles.disabledPage}><ChevronLeft size={15} /> Previous</span>}
-                {filters.page < totalPages ? <Link href={pageUrl(filters.page + 1)}>Next <ChevronRight size={15} /></Link> : <span className={styles.disabledPage}>Next <ChevronRight size={15} /></span>}
-              </div>
-            </nav>
-          </>
-        ) : (
-          <div className={styles.empty}>
-            <Clock3 size={28} aria-hidden="true" />
-            <strong>No matching alert records</strong>
-            <span>Try another status or source filter. Viewer messages and donor details are not shown here.</span>
-          </div>
-        )}
-        <p className={styles.privacyNote}>This history is scoped to your signed-in account. It omits donor names, payment amounts, and viewer messages.</p>
       </section>
-    </main>
+
+      {error ? (
+        <p className={styles.error} role="alert">Could not load alert history. Refresh to try again.</p>
+      ) : alerts?.length ? (
+        <div className={styles.tableWrap}>
+          <div className={styles.tableScroll} role="region" aria-label="Alert history table" tabIndex={0}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Donor / Source</th>
+                  <th>Amount</th>
+                  <th>Message</th>
+                  <th>Status</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert) => {
+                  const payload = alert.payload as Record<string, unknown> | null;
+                  return (
+                    <tr key={alert.id}>
+                      <td className={styles.mono}>{String(alert.id).slice(0, 8)}</td>
+                      <td>
+                        <span className={`${styles.typeBadge} ${styles[alert.alert_type as keyof typeof styles] || ""}`}>
+                          {alert.alert_type}
+                        </span>
+                      </td>
+                      <td>
+                        {payload?.donor_name
+                          ? String(payload.donor_name)
+                          : payload?.username
+                          ? `@${payload.username}`
+                          : "—"}
+                      </td>
+                      <td className={styles.amount}>
+                        {payload?.amount
+                          ? payload.currency === "KHR"
+                            ? `៛${Number(payload.amount).toLocaleString()}`
+                            : `$${Number(payload.amount).toFixed(2)}`
+                          : "—"}
+                      </td>
+                      <td className={styles.message}>
+                        {payload?.message ? String(payload.message) : "—"}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${styles[alert.status as keyof typeof styles] || ""}`}>
+                          {alert.status}
+                        </span>
+                      </td>
+                      <td className={styles.date}>
+                        {new Date(alert.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <nav className={styles.pagination} aria-label="Alert history pages">
+            <span>Page {pageNumber} of {totalPages}</span>
+            <div>
+              {pageNumber > 1 && (
+                <Link href={pageUrl(pageNumber - 1)} aria-label="Previous page">
+                  <ChevronLeft size={16} /> Previous
+                </Link>
+              )}
+              {pageNumber < totalPages && (
+                <Link href={pageUrl(pageNumber + 1)} aria-label="Next page">
+                  Next <ChevronRight size={16} />
+                </Link>
+              )}
+            </div>
+          </nav>
+        </div>
+      ) : (
+        <section className={styles.emptyState} role="status">
+          <div className={styles.emptyIcon}>
+            <Filter size={28} strokeWidth={1.6} />
+          </div>
+          <h3>No alerts found</h3>
+          <p>
+            {search || type !== "all"
+              ? "Try adjusting your search query or filter."
+              : "Alerts fired to your overlay will appear here."}
+          </p>
+        </section>
+      )}
+    </div>
   );
 }

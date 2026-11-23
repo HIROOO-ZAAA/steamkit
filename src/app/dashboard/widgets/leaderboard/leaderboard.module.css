@@ -1,0 +1,871 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: var(--dash-text);
+}
+
+.headerAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--dash-action);
+  border-radius: var(--radius-button);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+  font: 700 0.8rem "Rajdhani", sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.headerAction:hover {
+  background: var(--dash-action-hover);
+  border-color: var(--dash-action-hover);
+}
+
+.builderNote {
+  margin: -0.5rem 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.82rem;
+}
+
+.builderNote a {
+  color: var(--dash-action);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.subtitle {
+  color: var(--dash-text-secondary);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.card {
+  padding: 1.75rem;
+  min-width: 0;
+}
+
+.historyCard {
+  padding: 1.5rem;
+  border-left: 2px solid var(--dash-primary);
+}
+
+.emptyText {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--dash-text-muted);
+}
+
+.historyNotice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.historyNotice h2,
+.historyNotice p {
+  margin: 0;
+}
+
+.historyNotice h2 {
+  color: var(--dash-text);
+  font: 700 1rem "Rajdhani", sans-serif;
+}
+
+.historyNotice p {
+  color: var(--dash-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.historyEmpty {
+  align-items: center;
+  border-style: dashed;
+  background: var(--dash-surface-raised);
+  text-align: center;
+}
+
+.leaderboardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 1rem;
+}
+
+.leaderboardCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1rem 1.25rem;
+  background: var(--dash-surface-raised);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--radius-md);
+}
+
+.rankGold {
+  border-color: var(--dash-warning-border);
+  background: var(--dash-warning-bg);
+}
+
+.rankSilver {
+  border-color: var(--dash-info-border);
+  background: var(--dash-info-bg);
+}
+
+.rankBronze {
+  border-color: var(--dash-accent-soft);
+  background: var(--dash-accent-soft);
+}
+
+.rankBadge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  color: var(--dash-text-secondary);
+  font: 700 1.25rem "Rajdhani", sans-serif;
+}
+
+.donorMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.donorMeta strong {
+  overflow: hidden;
+  color: var(--dash-text);
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donorMeta span {
+  color: var(--dash-text-secondary);
+  font-size: 0.8rem;
+}
+
+.donorAmount {
+  flex: 0 0 auto;
+  color: var(--dash-success);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.cardLabel {
+  margin: 0 0 8px;
+  color: var(--dash-text);
+  font: 700 1rem "Rajdhani", sans-serif;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.sectionLabel {
+  margin: 20px 0 10px;
+  color: var(--dash-accent);
+  font: 700 0.85rem "Rajdhani", sans-serif;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.cfgToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.92rem;
+}
+
+.createGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.createLeft {
+  min-width: 0;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-right: 12px;
+}
+
+.createLeft::-webkit-scrollbar {
+  width: 6px;
+}
+
+.createLeft::-webkit-scrollbar-track {
+  background: var(--dash-surface-raised);
+  border-radius: 9999px;
+}
+
+.createLeft::-webkit-scrollbar-thumb {
+  background: var(--dash-border-strong);
+  border-radius: 9999px;
+}
+
+.createRight {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+  min-width: 0;
+}
+
+.cfgRow3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.toggle,
+.toggleOn {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 9999px;
+  background: var(--dash-surface-raised);
+  cursor: pointer;
+}
+
+.toggleOn {
+  border-color: var(--dash-action);
+  background: var(--dash-action-soft);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dash-text-muted);
+  transition: left 0.2s ease;
+}
+
+.toggleOn .toggleKnob {
+  left: 20px;
+  background: var(--dash-action);
+}
+
+.swatchRow {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--dash-text-secondary);
+  font-size: 0.6rem;
+  cursor: pointer;
+}
+
+.swatchDot,
+.colorDot {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--dash-border);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.swatchDot:hover,
+.colorDot:hover {
+  transform: scale(1.15);
+  border-color: var(--dash-action);
+  box-shadow: 0 0 14px var(--dash-action-ring);
+}
+
+.livePreviewLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--dash-text-secondary);
+  font: 700 0.75rem "Rajdhani", sans-serif;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.liveDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dash-action);
+  box-shadow: 0 0 10px var(--dash-action-ring);
+}
+
+.previewDashed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  border: 1px dashed var(--dash-border-strong);
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 39px, var(--dash-grid) 39px, var(--dash-grid) 40px),
+    repeating-linear-gradient(90deg, transparent, transparent 39px, var(--dash-grid) 39px, var(--dash-grid) 40px),
+    var(--dash-surface-raised);
+}
+
+.initBtn {
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid var(--dash-action);
+  border-radius: var(--radius-button);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+  font: 700 0.8rem "Rajdhani", sans-serif;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.initBtn:hover {
+  background: var(--dash-action-hover);
+  border-color: var(--dash-action-hover);
+}
+
+.lbPreviewRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lbPreviewRow:hover {
+  transform: translateX(4px);
+  box-shadow: 0 0 16px var(--dash-action-soft);
+}
+
+.animDrop { animation: lbDrop 0.4s ease both; }
+.animFade { animation: lbFade 0.4s ease both; }
+.animSlide { animation: lbSlide 0.4s ease both; }
+
+@keyframes lbDrop {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lbFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lbSlide {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+:global(.input-label) {
+  color: var(--dash-primary);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+:global(.input) {
+  font-size: 0.95rem;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+:global(select.input),
+:global(input.input) {
+  font-size: 0.95rem;
+}
+
+.widgetTable {
+  min-width: 0;
+  padding: 4px 0;
+  border: 1px solid var(--dash-border);
+  border-left: 2px solid var(--dash-primary);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  overflow: hidden;
+}
+
+.widgetHead,
+.widgetRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.05fr) minmax(0, 0.85fr) minmax(0, 0.9fr) minmax(0, 1.55fr);
+  gap: 16px;
+  align-items: center;
+  padding: 16px 20px;
+}
+
+.widgetHead {
+  border-bottom: 1px solid var(--dash-border);
+  color: var(--dash-text-muted);
+  font: 700 0.72rem "Rajdhani", sans-serif;
+  letter-spacing: 2px;
+}
+
+.headActions {
+  text-align: right;
+}
+
+.widgetRow {
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.widgetRow:last-child {
+  border-bottom: none;
+}
+
+.widgetRow > * {
+  min-width: 0;
+}
+
+.widgetTitleCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.widgetTitleCell strong {
+  overflow: hidden;
+  color: var(--dash-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widgetTitleCell small {
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.configCell,
+.colorCell,
+.actionsCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.colorCell {
+  gap: 6px;
+}
+
+.actionsCell {
+  justify-content: flex-end;
+}
+
+.configChip {
+  padding: 4px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+  font-size: 0.75rem;
+}
+
+.typeBadge {
+  padding: 4px 10px;
+  border: 1px solid var(--dash-success-border);
+  border-radius: 6px;
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+}
+
+.colorSwatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 4px;
+}
+
+.actClear,
+.actUnlock,
+.actIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--dash-text-secondary);
+  font: 600 0.75rem "Inter", sans-serif;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.actClear {
+  border: 1px solid var(--dash-info-border);
+  background: var(--dash-info-bg);
+  color: var(--dash-info);
+}
+
+.actUnlock {
+  width: 38px;
+  padding: 0;
+  border: 1px solid var(--dash-warning-border);
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+}
+
+.actIcon {
+  width: 38px;
+  padding: 0;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-raised);
+}
+
+.actTest {
+  color: var(--dash-success);
+}
+
+.actDanger {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.actClear:hover,
+.actUnlock:hover,
+.actIcon:hover {
+  border-color: var(--dash-border-strong);
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dash-text-secondary);
+  font: 600 0.84rem "Inter", sans-serif;
+  cursor: pointer;
+}
+
+.backBtn:hover {
+  color: var(--dash-accent);
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: var(--dash-scrim);
+  backdrop-filter: blur(6px);
+}
+
+.modalCard {
+  position: relative;
+  width: min(100%, 460px);
+  overflow: hidden;
+  padding: 28px;
+  border: 1px solid var(--dash-border);
+  border-left: 3px solid var(--dash-primary);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  box-shadow: var(--dash-shadow-lg, 0 24px 60px rgba(0, 0, 0, 0.3));
+}
+
+.modalAccent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--dash-primary), var(--dash-blue));
+}
+
+.modalTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--dash-text);
+  font: 700 1.05rem "Rajdhani", sans-serif;
+  letter-spacing: 1px;
+}
+
+.modalText {
+  margin: 12px 0 0;
+  color: var(--dash-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modalCancel,
+.modalConfirm,
+.modalDanger {
+  min-height: 40px;
+  padding: 10px 18px;
+  border-radius: var(--radius-button);
+  font: 700 0.78rem "Rajdhani", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.modalCancel {
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+}
+
+.modalCancel:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+
+.modalConfirm {
+  border: 1px solid var(--dash-action);
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.modalConfirm:hover {
+  background: var(--dash-action-hover);
+  border-color: var(--dash-action-hover);
+}
+
+.modalDanger {
+  border: 1px solid var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.modalDanger:hover {
+  border-color: var(--dash-danger);
+}
+
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 12px 16px;
+  border: 1px solid var(--dash-border);
+  border-left: 3px solid var(--dash-action);
+  border-radius: 10px;
+  background: var(--dash-surface);
+  box-shadow: var(--dash-shadow-md, 0 8px 32px rgba(0, 0, 0, 0.3));
+  transform: translateX(-50%);
+  animation: toastIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes toastIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.95); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+.toastIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.toastError {
+  border-color: var(--dash-danger-border);
+  border-left-color: var(--dash-danger);
+}
+
+.toastError .toastIcon {
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.toastTitle {
+  color: var(--dash-text);
+  font: 700 13px "Rajdhani", sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.toastMsg {
+  margin-top: 1px;
+  color: var(--dash-text-secondary);
+  font-size: 12px;
+}
+
+@media (max-width: 1020px) {
+  .createGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .createLeft {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .createRight {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .widgetHead {
+    display: none;
+  }
+
+  .widgetRow {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 18px 20px;
+  }
+
+  .actionsCell {
+    justify-content: flex-start;
+  }
+
+  .headActions {
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    gap: 1.25rem;
+  }
+
+  .card,
+  .historyCard {
+    padding: 1.15rem;
+  }
+
+  .cfgRow3 {
+    grid-template-columns: 1fr;
+  }
+
+  .cfgToggleRow {
+    align-items: flex-start;
+  }
+
+  .previewDashed {
+    padding: 24px 14px;
+  }
+
+  .widgetRow {
+    padding: 16px;
+  }
+
+  .actClear {
+    width: 100%;
+  }
+
+  .modalCard {
+    padding: 22px 20px;
+  }
+
+  .modalActions {
+    flex-direction: column-reverse;
+  }
+
+  .modalCancel,
+  .modalConfirm,
+  .modalDanger {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .leaderboardCard {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 4px;
+    padding: 14px;
+  }
+
+  .rankBadge {
+    grid-row: 1 / span 2;
+    width: 32px;
+    justify-self: start;
+  }
+
+  .donorMeta {
+    grid-column: 2;
+  }
+
+  .donorMeta strong {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .donorAmount {
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animDrop,
+  .animFade,
+  .animSlide,
+  .toast {
+    animation: none;
+  }
+
+  .lbPreviewRow:hover {
+    transform: none;
+  }
+}

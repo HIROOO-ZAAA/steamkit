@@ -1,14 +1,14 @@
 # StreamKit Implementation Status and Plan
 
-> **Last reviewed: 2026-10-14.** The 24-phase checklist below was written during
-> the Phase 0 audit. Most of the product has been built since. This document
-> replaces the old version, which still showed Phase 1 as the next unchecked box
-> while payments, Telegram, overlays and admin APIs were already shipping.
-> Statuses below were verified against the file tree, not assumed.
+> **Historical snapshot: last reviewed 2026-10-14.** This plan describes the
+> repository at that date. Its route list, framework version, migration count,
+> and remaining-work statuses are not current. For newer findings, see the
+> [2026-11-19 rebuild audit](./docs/streamkit-rebuild-audit-2026-11-19.md), and
+> verify current source and live database state before acting.
 
 ---
 
-## 1. What actually exists now
+## 1. Snapshot as of 2026-10-14
 
 ### Stack
 Next.js 16.3 (App Router) · React 19 · TypeScript 5 · Tailwind 3.4 · Supabase
@@ -121,7 +121,7 @@ overload instead of replacing the old signature.
 
 ---
 
-## 5. Recommended order for what remains
+## 5. Historical recommendations as of 2026-10-14
 
 1. **Hear it in OBS.** The loop is verified over HTTP and in a headless
    browser, and the four defects that made it silent are fixed — but no one has

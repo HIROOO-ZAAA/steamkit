@@ -91,7 +91,7 @@ export default function PublicLivePage({
     }
 
     loadPublicData();
-  }, [slug]);
+  }, [slug, supabase]);
 
   if (loading) {
     return (

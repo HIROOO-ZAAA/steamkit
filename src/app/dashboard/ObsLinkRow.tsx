@@ -1,71 +1,137 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { Check, Copy } from "lucide-react";
+import Link from "next/link";
+import { Check, Copy, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./dashboard.module.css";
 
+type LoadState = "loading" | "ready" | "missing" | "error";
+type CopyState = "idle" | "copied" | "error";
+
 export default function ObsLinkRow({ label, path }: { label: string; path: string }) {
   const [token, setToken] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [copyState, setCopyState] = useState<CopyState>("idle");
 
   useEffect(() => {
+    let cancelled = false;
     const supabase = createClient();
+
     void (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("streamkit_overlay_credentials")
-        .select("token")
-        .eq("creator_id", user.id)
-        .maybeSingle();
-      if (data?.token) setToken(data.token);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          if (!cancelled) setLoadState("error");
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("streamkit_overlay_credentials")
+          .select("token")
+          .eq("creator_id", user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (error) {
+          setLoadState("error");
+          return;
+        }
+
+        if (data?.token) {
+          setToken(data.token);
+          setLoadState("ready");
+          return;
+        }
+
+        setLoadState("missing");
+      } catch {
+        if (!cancelled) setLoadState("error");
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  function copy() {
+  useEffect(() => {
+    if (copyState === "idle") return;
+
+    const timer = window.setTimeout(() => setCopyState("idle"), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  async function copy() {
     if (!token) return;
-    void navigator.clipboard.writeText(`${window.location.origin}${path}?token=${token}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${path}?token=${token}`,
+      );
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={copy}
-        className="copyLink"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.35rem",
-          background: "none",
-          border: 0,
-          padding: 0,
-          cursor: "pointer",
-          fontFamily: "Rajdhani, sans-serif",
-          fontWeight: 700,
-          fontSize: "1rem",
-          color: "var(--color-primary)",
-        }}
-      >
-        {label} {copied ? <Check size={12} /> : <Copy size={12} />}
-      </button>
-      {copied &&
-        createPortal(
-          <div className={styles.toast}>
-            <span className={styles.toastIcon}>
-              <Check size={13} />
-            </span>
-            <div>
-              <div className={styles.toastTitle}>Success</div>
-              <div className={styles.toastMsg}>{label} link copied successfully.</div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
+    <div className={styles.obsRow}>
+      <span className={styles.obsLabel}>{label}</span>
+
+      {loadState === "loading" ? (
+        <span className={styles.obsStatus} role="status">
+          <Loader2 className={styles.spin} size={12} aria-hidden="true" />
+          Checking link
+        </span>
+      ) : loadState === "ready" && token ? (
+        <button
+          type="button"
+          className={`${styles.obsButton} ${
+            copyState === "copied"
+              ? styles.obsButtonCopied
+              : copyState === "error"
+                ? styles.obsButtonError
+                : ""
+          }`}
+          onClick={copy}
+          aria-label={
+            copyState === "copied"
+              ? `${label} link copied`
+              : copyState === "error"
+                ? `Copy ${label} link failed`
+                : `Copy ${label} link`
+          }
+        >
+          {copyState === "copied" ? (
+            <Check size={12} aria-hidden="true" />
+          ) : (
+            <Copy size={12} aria-hidden="true" />
+          )}
+          <span aria-live="polite">
+            {copyState === "copied"
+              ? "Copied"
+              : copyState === "error"
+                ? "Copy failed"
+                : "Copy link"}
+          </span>
+        </button>
+      ) : loadState === "missing" ? (
+        <Link href="/dashboard/widgets/alerts" className={styles.obsGenerate}>
+          Open Alerts
+        </Link>
+      ) : (
+        <span
+          className={styles.obsStatus}
+          title="The overlay credential could not be checked."
+        >
+          Unavailable
+        </span>
+      )}
+    </div>
   );
 }

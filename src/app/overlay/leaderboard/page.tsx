@@ -11,7 +11,6 @@ type DonorRow = {
   rank: number;
 };
 
-const MEDALS = ["🥇", "🥈", "🥉"];
 
 export default function LeaderboardWidgetPage({
   searchParams,

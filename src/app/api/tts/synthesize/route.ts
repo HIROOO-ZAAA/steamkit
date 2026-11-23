@@ -44,10 +44,12 @@ import {
 import crypto from "node:crypto";
 import {
   ALERT_TTS_GENERATION_TIMEOUT_MS,
+  remainingTtsGenerationBudget,
   ttsGenerationFailureStatus,
 } from "@/lib/voice/tts-timeouts";
 import { selectedCloneId } from "@/lib/voice/clone-selection";
 import { recordTtsObservation } from "@/lib/voice/tts-health";
+import { shouldUseDefaultVoiceFallback } from "@/lib/voice/tts-fallback";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -258,6 +260,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "no selected voice clone is enabled" }, { status: 409 });
   }
 
+  let voiceSource: "clone" | "fallback" = configuredCloneId ? "clone" : "fallback";
+
   /**
    * createSignedUrl doubles as an existence probe: it fails for a missing object,
    * which is exactly the "not cached" answer we want.
@@ -277,47 +281,44 @@ export async function POST(req: Request) {
 
   const cached = await lookup(voiceId);
   if (cached) {
-    recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio" });
+    recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio", voiceSource });
     console.error(
       `[tts] payment_id=${donationId} stage=audio_cache result=hit ` +
-        `voice=${voiceId === DEFAULT_VOICE_ID ? "default" : "clone"}`,
+        `voice=${voiceSource === "clone" ? "clone" : "default"}`,
     );
     return NextResponse.json({
       audioUrl: cached,
       cached: true,
       voiceId,
-      usedClone: voiceId !== DEFAULT_VOICE_ID,
+      usedClone: voiceSource === "clone",
       fellBack: false,
     });
   }
 
   const deadline = Date.now() + GENERATE_TIMEOUT_MS;
-  const remaining = () => deadline - Date.now();
+  const remaining = () => remainingTtsGenerationBudget(deadline);
   let audioBuffer: ArrayBuffer;
-  const fellBack = false;
+  let fellBack = false;
 
-  const isClone = voiceId !== DEFAULT_VOICE_ID;
+  const isClone = voiceSource === "clone";
   console.error(
     `[tts] payment_id=${donationId} stage=provider_request result=started ` +
       `voice=${isClone ? "clone" : "default"} text_chars=${text.length}`,
   );
-  recordTtsObservation(creatorId, { stage: "started", result: "started" });
+  recordTtsObservation(creatorId, { stage: "started", result: "started", voiceSource });
 
   try {
     audioBuffer = await attemptSynthesis(voiceId, text, remaining());
-    recordTtsObservation(creatorId, { stage: "provider_audio", result: "audio" });
+    recordTtsObservation(creatorId, { stage: "provider_audio", result: "audio", voiceSource });
     console.error(
       `[tts] payment_id=${donationId} stage=provider_result result=audio ` +
         `bytes=${audioBuffer.byteLength} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
     );
   } catch (error) {
     const providerStatus = error instanceof VoiceStudioError ? error.status : "none";
-    recordTtsObservation(creatorId, {
-      stage: "failed",
-      result: "failed",
-      ...(typeof providerStatus === "number" ? { providerStatus } : {}),
-      failureKind: error instanceof TimeoutError ? "timeout" : "provider",
-    });
+    const timedOut = error instanceof TimeoutError;
+    const answeredProviderError = error instanceof VoiceStudioError;
+    const failureKind = timedOut ? "timeout" : answeredProviderError ? "provider" : "transport";
     console.error(
       `[tts] payment_id=${donationId} stage=provider_result result=failed ` +
         `error=${error instanceof Error ? error.name : "unknown"} ` +
@@ -332,20 +333,92 @@ export async function POST(req: Request) {
     );
 
     if (error instanceof TimeoutError) {
+      recordTtsObservation(creatorId, {
+        stage: "failed",
+        result: "failed",
+        ...(typeof providerStatus === "number" ? { providerStatus } : {}),
+        voiceSource,
+        failureKind: "timeout",
+      });
       console.error("[tts] generation deadline reached; no voice fallback was attempted");
       return NextResponse.json(
         { error: "tts generation timed out" },
         { status: ttsGenerationFailureStatus(true) },
       );
     }
-    return NextResponse.json(
-      { error: "tts generation failed" },
-      { status: ttsGenerationFailureStatus(false) },
+
+    const shouldFallback = shouldUseDefaultVoiceFallback({
+      voiceSource,
+      failureKind,
+      providerRefused: error instanceof VoiceStudioError && error.refused,
+    });
+    if (!shouldFallback) {
+      recordTtsObservation(creatorId, {
+        stage: "failed",
+        result: "failed",
+        ...(typeof providerStatus === "number" ? { providerStatus } : {}),
+        voiceSource,
+        failureKind,
+      });
+      return NextResponse.json(
+        { error: "tts generation failed" },
+        { status: ttsGenerationFailureStatus(false) },
+      );
+    }
+
+    console.error(
+      `[tts] payment_id=${donationId} stage=fallback_request result=started reason=provider_error`,
     );
+    voiceId = DEFAULT_VOICE_ID;
+    voiceSource = "fallback";
+    fellBack = true;
+
+    const cachedFallback = await lookup(voiceId);
+    if (cachedFallback) {
+      recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio", voiceSource });
+      console.error(`[tts] payment_id=${donationId} stage=fallback_cache result=hit`);
+      return NextResponse.json({
+        audioUrl: cachedFallback,
+        cached: true,
+        voiceId,
+        usedClone: false,
+        fellBack,
+      });
+    }
+
+    recordTtsObservation(creatorId, { stage: "started", result: "started", voiceSource });
+    try {
+      audioBuffer = await attemptSynthesis(voiceId, text, remaining());
+      recordTtsObservation(creatorId, { stage: "provider_audio", result: "audio", voiceSource });
+      console.error(
+        `[tts] payment_id=${donationId} stage=fallback_result result=audio ` +
+          `bytes=${audioBuffer.byteLength} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
+      );
+    } catch (fallbackError) {
+      const fallbackTimedOut = fallbackError instanceof TimeoutError;
+      const fallbackAnswered = fallbackError instanceof VoiceStudioError;
+      const fallbackStatus = fallbackError instanceof VoiceStudioError ? fallbackError.status : "none";
+      recordTtsObservation(creatorId, {
+        stage: "failed",
+        result: "failed",
+        ...(typeof fallbackStatus === "number" ? { providerStatus: fallbackStatus } : {}),
+        voiceSource,
+        failureKind: fallbackTimedOut ? "timeout" : fallbackAnswered ? "provider" : "transport",
+      });
+      console.error(
+        `[tts] payment_id=${donationId} stage=fallback_result result=failed ` +
+          `error=${fallbackError instanceof Error ? fallbackError.name : "unknown"} ` +
+          `status=${fallbackStatus} elapsed_ms=${GENERATE_TIMEOUT_MS - remaining()}`,
+      );
+      return NextResponse.json(
+        { error: "tts fallback failed" },
+        { status: ttsGenerationFailureStatus(fallbackTimedOut) },
+      );
+    }
   }
 
   if (!looksLikeAudio(audioBuffer)) {
-    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "invalid_audio" });
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", voiceSource, failureKind: "invalid_audio" });
     return NextResponse.json(
       { error: "tts provider returned unexpected payload" },
       { status: 502 },
@@ -364,7 +437,7 @@ export async function POST(req: Request) {
     });
 
   if (uploadError) {
-    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "storage" });
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", voiceSource, failureKind: "storage" });
     return NextResponse.json({ error: "failed to cache audio" }, { status: 500 });
   }
 
@@ -373,16 +446,16 @@ export async function POST(req: Request) {
     .createSignedUrl(cachePath, 60 * 10);
 
   if (!signed?.signedUrl) {
-    recordTtsObservation(creatorId, { stage: "failed", result: "failed", failureKind: "storage" });
+    recordTtsObservation(creatorId, { stage: "failed", result: "failed", voiceSource, failureKind: "storage" });
     return NextResponse.json({ error: "failed to sign audio" }, { status: 500 });
   }
 
-  recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio" });
+  recordTtsObservation(creatorId, { stage: "audio_ready", result: "audio", voiceSource });
   return NextResponse.json({
     audioUrl: signed.signedUrl,
     cached: false,
     voiceId,
-    usedClone: voiceId !== DEFAULT_VOICE_ID,
+    usedClone: voiceSource === "clone",
     fellBack,
   });
 }

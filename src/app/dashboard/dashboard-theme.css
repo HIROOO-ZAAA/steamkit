@@ -1,0 +1,416 @@
+/*
+ * Aurora Night dashboard theme.
+ * Everything here is scoped under .dashboard-shell so public tip pages and OBS
+ * overlays never inherit dashboard tokens.
+ */
+
+.dashboard-shell {
+  color-scheme: dark;
+  accent-color: var(--dash-action);
+  caret-color: var(--dash-action);
+
+  --dash-canvas: #0f172a;
+  --dash-surface: #111c32;
+  --dash-surface-raised: #13203a;
+  --dash-surface-hover: #1d2e49;
+  --dash-nav-bg: #0f172a;
+  --dash-border: #1e3350;
+  --dash-border-strong: #38516f;
+  --dash-text: #f8fafc;
+  --dash-text-secondary: #cbd5e1;
+  --dash-text-muted: #94a3b8;
+  --dash-accent: #10b981;
+  --dash-accent-strong: #34d399;
+  --dash-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --dash-accent-soft: rgba(16, 185, 129, 0.12);
+  --dash-blue: #60a5fa;
+  --dash-blue-soft: rgba(96, 165, 250, 0.1);
+  --dash-purple: #a78bfa;
+  --dash-purple-soft: rgba(167, 139, 250, 0.1);
+  --dash-primary: #10b981;
+  --dash-primary-hover: #34d399;
+  --dash-action: #10b981;
+  --dash-action-hover: #34d399;
+  --dash-action-text: #04130d;
+  --dash-action-soft: rgba(16, 185, 129, 0.12);
+  --dash-action-ring: rgba(16, 185, 129, 0.24);
+  --dash-success: #6ee7b7;
+  --dash-success-bg: rgba(52, 211, 153, 0.1);
+  --dash-success-border: rgba(52, 211, 153, 0.26);
+  --dash-warning: #fcd34d;
+  --dash-warning-bg: rgba(251, 191, 36, 0.1);
+  --dash-warning-border: rgba(251, 191, 36, 0.28);
+  --dash-danger: #fca5a5;
+  --dash-danger-bg: rgba(248, 113, 113, 0.1);
+  --dash-danger-border: rgba(248, 113, 113, 0.28);
+  --dash-info: #7dd3fc;
+  --dash-info-bg: rgba(56, 189, 248, 0.1);
+  --dash-info-border: rgba(56, 189, 248, 0.26);
+  --dash-focus: #34d399;
+  --dash-grid: rgba(30, 51, 80, 0.16);
+  --dash-aurora-1: rgba(16, 185, 129, 0.05);
+  --dash-aurora-2: rgba(56, 189, 248, 0.03);
+  --dash-scrim: rgba(2, 7, 16, 0.72);
+  --dash-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --dash-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.24);
+  --dash-shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.34);
+
+  /* Map the existing global token names used by older dashboard modules. */
+  --color-neutral: var(--dash-canvas);
+  --color-surface: var(--dash-surface);
+  --color-surface-raised: var(--dash-surface-raised);
+  --color-primary: var(--dash-primary);
+  --color-secondary: #0e5844;
+  --color-tertiary: var(--dash-text-secondary);
+  --color-text: var(--dash-text);
+  --color-border: var(--dash-border);
+  --color-grid: var(--dash-grid);
+  --brand-primary: var(--dash-primary);
+  --brand-primary-hover: var(--dash-primary-hover);
+  --brand-secondary: var(--color-secondary);
+  --brand-accent: var(--dash-text-secondary);
+  --brand-danger: var(--dash-danger);
+  --brand-success: var(--dash-success);
+  --brand-warning: var(--dash-warning);
+  --bg-base: var(--dash-canvas);
+  --bg-surface: var(--dash-surface);
+  --bg-elevated: var(--dash-surface-raised);
+  --bg-hover: var(--dash-surface-hover);
+  --bg-card: var(--dash-surface);
+  --bg-input: var(--dash-surface-raised);
+  --text-primary: var(--dash-text);
+  --text-secondary: var(--dash-text-secondary);
+  --text-muted: var(--dash-text-muted);
+  --text-inverse: var(--dash-canvas);
+  --border-subtle: rgba(38, 58, 85, 0.62);
+  --border-default: var(--dash-border);
+  --border-strong: var(--dash-border-strong);
+  --border-accent: var(--dash-accent);
+  --shadow-sm: var(--dash-shadow-sm);
+  --shadow-md: var(--dash-shadow-md);
+  --shadow-lg: var(--dash-shadow-lg);
+  --shadow-xl: var(--dash-shadow-lg);
+  --shadow-glow: 0 0 24px var(--dash-action-ring);
+  --gradient-primary: linear-gradient(135deg, var(--dash-accent), var(--dash-blue));
+
+  --radius-button: 10px;
+  --radius-xs: 8px;
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  min-height: 100vh;
+  color: var(--dash-text);
+  background-color: var(--dash-canvas);
+  background-image:
+    radial-gradient(1000px 600px at 15% -10%, var(--dash-aurora-1), transparent 68%),
+    radial-gradient(900px 560px at 96% 4%, var(--dash-aurora-2), transparent 66%),
+    linear-gradient(to right, var(--dash-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--dash-grid) 1px, transparent 1px);
+  background-size: auto, auto, 40px 40px, 40px 40px;
+  background-attachment: fixed;
+  scrollbar-color: var(--dash-border-strong) transparent;
+}
+
+html[data-dashboard-theme="light"] .dashboard-shell {
+  color-scheme: light;
+
+  --dash-canvas: #f3f7fb;
+  --dash-surface: #ffffff;
+  --dash-surface-raised: #f8fafc;
+  --dash-surface-hover: #edf3f9;
+  --dash-nav-bg: #eaf0f7;
+  --dash-border: #d7e1ed;
+  --dash-border-strong: #b8c9da;
+  --dash-text: #0f172a;
+  --dash-text-secondary: #475569;
+  --dash-text-muted: #52657a;
+  --dash-accent: #0f766e;
+  --dash-accent-strong: #115e59;
+  --dash-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --dash-accent-soft: rgba(15, 118, 110, 0.1);
+  --dash-blue: #2563eb;
+  --dash-blue-soft: rgba(37, 99, 235, 0.08);
+  --dash-purple: #7c3aed;
+  --dash-purple-soft: rgba(124, 58, 237, 0.08);
+  --dash-primary: #0f766e;
+  --dash-primary-hover: #115e59;
+  --dash-action: #0f766e;
+  --dash-action-hover: #115e59;
+  --dash-action-text: #ffffff;
+  --dash-action-soft: rgba(15, 118, 110, 0.09);
+  --dash-action-ring: rgba(15, 118, 110, 0.2);
+  --dash-success: #047857;
+  --dash-success-bg: #ecfdf5;
+  --dash-success-border: #a7f3d0;
+  --dash-warning: #92400e;
+  --dash-warning-bg: #fffbeb;
+  --dash-warning-border: #fde68a;
+  --dash-danger: #b91c1c;
+  --dash-danger-bg: #fef2f2;
+  --dash-danger-border: #fecaca;
+  --dash-info: #2563eb;
+  --dash-info-bg: #eff6ff;
+  --dash-info-border: #bfdbfe;
+  --dash-focus: #0f766e;
+  --dash-grid: rgba(15, 118, 110, 0.045);
+  --dash-aurora-1: rgba(4, 120, 87, 0.08);
+  --dash-aurora-2: rgba(37, 99, 235, 0.05);
+  --dash-scrim: rgba(15, 23, 42, 0.42);
+  --dash-shadow-sm: 0 1px 2px rgba(13, 27, 42, 0.06);
+  --dash-shadow-md: 0 10px 30px rgba(13, 27, 42, 0.09);
+  --dash-shadow-lg: 0 24px 60px rgba(13, 27, 42, 0.14);
+
+  --color-secondary: #d1fae5;
+  --text-inverse: #ffffff;
+  --border-subtle: rgba(215, 225, 237, 0.85);
+  --shadow-glow: 0 0 24px var(--dash-action-ring);
+}
+
+.dashboard-shell ::selection {
+  background: var(--dash-accent-soft);
+  color: var(--dash-text);
+}
+
+.dashboard-shell :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--dash-focus);
+  outline-offset: 2px;
+}
+
+.dashboard-shell .btn {
+  min-height: 38px;
+  border-radius: var(--radius-button);
+  letter-spacing: 0.07em;
+}
+
+.dashboard-shell .btn-sm {
+  min-height: 32px;
+}
+
+.dashboard-shell .btn-primary {
+  background: var(--dash-action);
+  border-color: var(--dash-action);
+  color: var(--dash-action-text);
+}
+
+.dashboard-shell .btn-primary:hover:not(:disabled) {
+  background: var(--dash-action-hover);
+  border-color: var(--dash-action-hover);
+  box-shadow: 0 0 0 3px var(--dash-action-ring);
+}
+
+.dashboard-shell .btn-secondary {
+  background: var(--dash-surface);
+  border-color: var(--dash-border);
+  color: var(--dash-text-secondary);
+}
+
+.dashboard-shell .btn-secondary:hover:not(:disabled) {
+  background: var(--dash-surface-hover);
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+  box-shadow: none;
+}
+
+.dashboard-shell .btn-ghost:hover:not(:disabled) {
+  background: var(--dash-surface-hover);
+  border-color: var(--dash-border);
+  color: var(--dash-text);
+}
+
+.dashboard-shell .btn-danger {
+  background: var(--dash-danger-bg);
+  border-color: var(--dash-danger-border);
+  color: var(--dash-danger);
+}
+
+.dashboard-shell .btn-danger:hover:not(:disabled) {
+  background: var(--dash-danger-bg);
+  border-color: var(--dash-danger);
+}
+
+.dashboard-shell .card {
+  border-radius: var(--radius-lg);
+  border-color: var(--dash-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 45%),
+    var(--dash-surface);
+  box-shadow: var(--dash-shadow-sm);
+}
+
+.dashboard-shell .input-label {
+  color: var(--dash-text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+}
+
+.dashboard-shell .input {
+  border-radius: var(--radius-sm);
+  border-color: var(--dash-border);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  font-size: 0.9rem;
+}
+
+.dashboard-shell .input::placeholder {
+  color: var(--dash-text-muted);
+}
+
+.dashboard-shell .input:focus {
+  border-color: var(--dash-accent);
+  background: var(--dash-surface-raised);
+  box-shadow: 0 0 0 3px var(--dash-accent-soft);
+}
+
+.dashboard-shell .alert-error {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.dashboard-shell .alert-success {
+  border-color: var(--dash-border);
+  border-left-color: var(--dash-action);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  box-shadow: var(--dash-shadow-md);
+}
+
+.dashboard-shell .badge-live {
+  border-color: var(--dash-action);
+  background: var(--dash-action-soft);
+  color: var(--dash-success);
+}
+
+.dashboard-shell .badge-live::before {
+  background: var(--dash-action);
+}
+
+.dashboard-shell :is(.badge-success, .badge-green) {
+  border-color: var(--dash-success-border);
+  background: var(--dash-success-bg);
+  color: var(--dash-success);
+}
+
+.dashboard-shell .badge-purple {
+  border-color: color-mix(in srgb, var(--dash-purple) 34%, transparent);
+  background: var(--dash-purple-soft);
+  color: var(--dash-purple);
+}
+
+.dashboard-shell :is(.badge-warning, .badge-amber) {
+  border-color: var(--dash-warning-border);
+  background: var(--dash-warning-bg);
+  color: var(--dash-warning);
+}
+
+.dashboard-shell :is(.badge-danger, .badge-red) {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.dashboard-shell :is(.badge-muted, .badge-gray) {
+  border-color: var(--dash-border);
+  background: var(--dash-surface-raised);
+  color: var(--dash-text-secondary);
+}
+
+.dashboard-shell .badge-cyan {
+  border-color: var(--dash-info-border);
+  background: var(--dash-info-bg);
+  color: var(--dash-info);
+}
+
+.dashboard-shell .live-dot {
+  background: var(--dash-action);
+}
+
+.dashboard-shell .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--dash-surface-raised) 25%,
+    var(--dash-surface-hover) 50%,
+    var(--dash-surface-raised) 75%
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes dashboardPageEnter {
+  from {
+    opacity: 0.86;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dashboardDisclosureEnter {
+  from {
+    opacity: 0.75;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-shell #dashboard-main > :last-child,
+.dashboard-shell #guide-content > :first-child {
+  animation: dashboardPageEnter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard-shell main :is(button:not(:disabled), a[role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 140ms ease;
+}
+
+.dashboard-shell main :is(button:not(:disabled), a[role="button"]):active {
+  transform: scale(0.985);
+}
+
+.dashboard-shell main :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.dashboard-shell main details[open] > :not(summary) {
+  animation: dashboardDisclosureEnter 180ms ease-out both;
+}
+
+@media (max-width: 900px) {
+  .dashboard-shell {
+    background-attachment: scroll;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-shell #dashboard-main > :last-child,
+  .dashboard-shell #guide-content > :first-child,
+  .dashboard-shell main details[open] > :not(summary) {
+    animation: none;
+  }
+
+  .dashboard-shell main :is(button:not(:disabled), a[role="button"], input, select, textarea) {
+    transition: none;
+  }
+
+  .dashboard-shell main :is(button:not(:disabled), a[role="button"]):active {
+    transform: none;
+  }
+
+  .dashboard-shell *,
+  .dashboard-shell *::before,
+  .dashboard-shell *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

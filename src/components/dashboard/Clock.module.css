@@ -1,0 +1,43 @@
+.clock {
+  display: grid;
+  grid-template-areas:
+    "time zone"
+    "date date";
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  justify-content: end;
+  gap: 0 0.4rem;
+  text-align: right;
+}
+
+.time {
+  grid-area: time;
+  color: var(--dash-text);
+  font: 700 1.45rem/1 "Rajdhani", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.zone {
+  grid-area: zone;
+  color: var(--dash-accent);
+  font: 700 0.58rem/1 "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.date {
+  grid-area: date;
+  margin-top: 0.22rem;
+  color: var(--dash-text-muted);
+  font: 600 0.64rem/1.2 "Rajdhani", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .clock {
+    justify-content: start;
+    text-align: left;
+  }
+}

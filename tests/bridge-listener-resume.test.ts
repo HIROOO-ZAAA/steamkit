@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
@@ -276,6 +276,37 @@ describe("reset invalidates an in-flight attempt", () => {
     assert.equal(guard.getActiveConfig(), null);
   });
 
+  it("keeps a newer in-flight attempt tracked when an older attempt finishes after reset", async () => {
+    let releaseFirst: () => void = () => {};
+    let releaseSecond: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    let attempts = 0;
+    const guard = createListenGuard(async () => {
+      attempts += 1;
+      const current = attempts;
+      await (current === 1 ? firstGate : secondGate);
+      return { detach: () => {} };
+    });
+
+    const first = guard.ensureListening(CFG);
+    guard.reset();
+    const secondConfig = { ...CFG, chatId: "-100456" };
+    const second = guard.ensureListening(secondConfig);
+
+    releaseFirst();
+    const firstResult = await first;
+    assert.equal(firstResult.ok, false);
+    assert.match(String(firstResult.reason), /reset/);
+
+    const joinedSecond = guard.ensureListening(secondConfig);
+    releaseSecond();
+    await Promise.all([second, joinedSecond]);
+
+    assert.equal(attempts, 2);
+    assert.equal(guard.getActiveConfig()?.chatId, secondConfig.chatId);
+    assert.equal(guard.isStarted(), true);
+  });
   it("detaches the handler when reset races an in-flight attach", async () => {
     let detached = 0;
     let release: () => void = () => {};
@@ -320,11 +351,11 @@ describe("reset invalidates an in-flight attempt", () => {
     assert.equal(detached, 1, "logout must remove the handler explicitly");
   });
 
-  it("reset survives a throwing teardown", () => {
+  it("reset survives a throwing teardown", async () => {
     const guard = createListenGuard(async () => ({
       detach: () => { throw new Error("detach blew up"); },
     }));
-    guard.ensureListening(CFG);
+    await guard.ensureListening(CFG);
     // Must not propagate: a cleanup failure cannot be allowed to break logout.
     assert.doesNotThrow(() => guard.reset());
     assert.equal(guard.isStarted(), false);
@@ -366,21 +397,31 @@ describe("listener guard: duplicate handler prevention", () => {
     assert.equal(attached, 1);
   });
 
-  it("attaches one handler when resume races a manual configure", async () => {
-    let attached = 0;
+  it("applies a manual configure that races startup for a different config", async () => {
+    let attempts = 0;
+    const attached: string[] = [];
+    const detached: string[] = [];
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const guard = createListenGuard(async () => {
-      attached += 1;
-      await gate;
+    const nextConfig = { ...CFG, chatId: "-100123" };
+    const guard = createListenGuard(async (cfg) => {
+      attempts += 1;
+      if (attempts === 1) await gate;
+      attached.push(cfg.chatId);
+      return { detach: () => detached.push(cfg.chatId) };
     });
 
     const resuming = guard.ensureListening(CFG);
-    const configuring = guard.ensureListening({ ...CFG, chatId: "-100123" });
+    const configuring = guard.ensureListening(nextConfig);
     release();
-    await Promise.all([resuming, configuring]);
+    const [resumeResult, configureResult] = await Promise.all([resuming, configuring]);
 
-    assert.equal(attached, 1);
+    assert.equal(resumeResult.resumed, true);
+    assert.equal(configureResult.resumed, true);
+    assert.equal(configureResult.replaced, true);
+    assert.deepEqual(attached, [CFG.chatId, nextConfig.chatId]);
+    assert.deepEqual(detached, [CFG.chatId]);
+    assert.equal(guard.getActiveConfig()?.chatId, nextConfig.chatId);
     assert.equal(guard.isStarted(), true);
   });
 
@@ -513,5 +554,105 @@ describe("resume must never reach session recovery", () => {
 
   it("handles a resume that returns undefined", () => {
     assert.equal(runResumeSafely(() => undefined), true);
+  });
+});
+
+// Regression tests for the attach -> guard approval -> commit lifecycle.
+describe("listener commit and ownership race protection", () => {
+  it("commits a current attachment exactly once", async () => {
+    let commits = 0;
+    let detaches = 0;
+
+    const guard = createListenGuard(async () => ({
+      commit: () => { commits += 1; },
+      detach: () => { detaches += 1; },
+    }));
+
+    const result = await guard.ensureListening(CFG);
+
+    assert.equal(result.ok, true);
+    assert.equal(guard.isStarted(), true);
+    assert.equal(commits, 1);
+    assert.equal(detaches, 0);
+
+    const repeated = await guard.ensureListening(CFG);
+    assert.equal(repeated.reason, "already listening");
+    assert.equal(commits, 1, "a repeated call must not commit again");
+  });
+
+  it("does not commit an attachment invalidated by reset", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let commits = 0;
+    let detaches = 0;
+
+    const guard = createListenGuard(async () => {
+      await gate;
+      return {
+        commit: () => { commits += 1; },
+        detach: () => { detaches += 1; },
+      };
+    });
+
+    const pending = guard.ensureListening(CFG);
+    guard.reset();
+    release();
+
+    const result = await pending;
+
+    assert.equal(result.ok, false);
+    assert.match(String(result.reason), /reset/);
+    assert.equal(commits, 0, "a superseded attachment must never publish state");
+    assert.equal(detaches, 1, "the superseded handler must be detached");
+    assert.equal(guard.isStarted(), false);
+  });
+
+  it("does not let stale cleanup clear a newer attachment for the same chat", async () => {
+    let releaseFirst: () => void = () => {};
+    let releaseSecond: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+
+    let attempts = 0;
+    let activeOwner: object | null = null;
+    const guard = createListenGuard(async () => {
+      attempts += 1;
+      const owner = {};
+      const gate = attempts === 1 ? firstGate : secondGate;
+      await gate;
+
+      return {
+        commit: () => { activeOwner = owner; },
+        detach: () => {
+          if (activeOwner === owner) activeOwner = null;
+        },
+      };
+    });
+
+    const first = guard.ensureListening(CFG);
+    await Promise.resolve();
+
+    guard.reset();
+    const second = guard.ensureListening(CFG);
+    await Promise.resolve();
+
+    releaseSecond();
+    const secondResult = await second;
+    assert.equal(secondResult.ok, true);
+    assert.notEqual(activeOwner, null);
+
+    const newerOwner = activeOwner;
+
+    releaseFirst();
+    const firstResult = await first;
+
+    assert.equal(firstResult.ok, false);
+    assert.match(String(firstResult.reason), /reset/);
+    assert.equal(
+      activeOwner,
+      newerOwner,
+      "stale cleanup must not clear the newer listener's ownership",
+    );
+    assert.equal(guard.isStarted(), true);
   });
 });

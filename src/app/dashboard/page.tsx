@@ -1,21 +1,30 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
-  Link2,
-  ScrollText,
-  Settings,
-  SkipForward,
-  Cpu,
-  Tv,
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  BellRing,
+  BookOpen,
+  CheckCircle2,
+  Film,
+  HandCoins,
+  MonitorPlay,
+  ReceiptText,
+  Send,
+  TrendingUp,
+  WalletCards,
   Zap,
 } from "lucide-react";
-import Clock from "./Clock";
+import { alertHistorySourceLabel } from "@/lib/overlay/alert-history";
+import { getDashboardDisplayName } from "@/lib/dashboard/display-name";
 import ObsLinkRow from "./ObsLinkRow";
 import DonationsOverview from "./DonationsOverview";
 import styles from "./dashboard.module.css";
 
 export const metadata = {
-  title: "Dashboard – Kit Steam",
+  title: "Dashboard | Steam Kit",
 };
 
 type Tip = {
@@ -29,18 +38,127 @@ type Tip = {
   created_at: string;
 };
 
-function DiscordIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
-    </svg>
+type ChartTip = Pick<
+  Tip,
+  "amount" | "currency" | "payment_method" | "payment_status" | "created_at"
+>;
+
+type CurrencySummary = {
+  total: number;
+  aba: number;
+  bakong: number;
+  count: number;
+  abaCount: number;
+  bakongCount: number;
+};
+
+export type DailyDonationPoint = {
+  key: string;
+  label: string;
+  total: number;
+};
+
+const DASHBOARD_TIME_ZONE = "Asia/Phnom_Penh";
+const CHART_DAYS = 31;
+const ABA_METHODS = ["aba", "aba_payway"] as const;
+
+function amountLabel(amount: number, currency: string) {
+  return currency === "KHR"
+    ? `KHR ${Number(amount).toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+    : `$${Number(amount).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+}
+
+function shortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: DASHBOARD_TIME_ZONE,
+  });
+}
+
+function dayKey(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: DASHBOARD_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function chartStartIso() {
+  const today = dayKey(new Date());
+  const start = new Date(`${today}T00:00:00+07:00`);
+  start.setUTCDate(start.getUTCDate() - (CHART_DAYS - 1));
+  return start.toISOString();
+}
+
+function buildDailySeries(
+  rows: ChartTip[],
+  currency: string,
+): DailyDonationPoint[] {
+  const today = dayKey(new Date());
+  const keys = Array.from({ length: CHART_DAYS }, (_, index) => {
+    const date = new Date(`${today}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - (CHART_DAYS - 1 - index));
+    return date.toISOString().slice(0, 10);
+  });
+
+  const totals = new Map(keys.map((key) => [key, 0]));
+
+  for (const tip of rows) {
+    if (tip.currency !== currency || tip.payment_status !== "successful") {
+      continue;
+    }
+
+    const key = dayKey(tip.created_at);
+    if (!totals.has(key)) continue;
+    totals.set(key, (totals.get(key) ?? 0) + Number(tip.amount));
+  }
+
+  return keys.map((key) => ({
+    key,
+    label: new Date(`${key}T00:00:00Z`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    }),
+    total: totals.get(key) ?? 0,
+  }));
+}
+
+function summarizeCurrency(
+  rows: ChartTip[],
+  currency: string,
+): CurrencySummary {
+  const completed = rows.filter(
+    (tip) => tip.currency === currency && tip.payment_status === "successful",
   );
+
+  const sum = (methods: readonly string[]) =>
+    completed
+      .filter((tip) =>
+        methods.includes((tip.payment_method ?? "").toLowerCase()),
+      )
+      .reduce((total, tip) => total + Number(tip.amount), 0);
+
+  return {
+    total: completed.reduce((total, tip) => total + Number(tip.amount), 0),
+    aba: sum(ABA_METHODS),
+    bakong: sum(["bakong"]),
+    count: completed.length,
+    abaCount: completed.filter((tip) =>
+      ABA_METHODS.includes(
+        (tip.payment_method ?? "").toLowerCase() as (typeof ABA_METHODS)[number],
+      ),
+    ).length,
+    bakongCount: completed.filter(
+      (tip) => (tip.payment_method ?? "").toLowerCase() === "bakong",
+    ).length,
+  };
 }
 
 export default async function DashboardPage() {
@@ -49,237 +167,687 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: profile } = await supabase
+  if (!user) redirect("/auth");
+
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("username, display_name")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
 
-  const { data: activeGroup } = await supabase
+  const { data: activeGroup, error: groupError } = await supabase
     .from("telegram_groups")
     .select("group_title")
-    .eq("creator_id", user!.id)
+    .eq("creator_id", user.id)
     .eq("is_active", true)
     .limit(1)
     .maybeSingle();
 
-  const { data: tips } = await supabase
+  const { data: recentTips, error: recentError } = await supabase
     .from("tips")
     .select(
       "id, tipper_name, amount, currency, message, payment_method, payment_status, created_at",
     )
-    .eq("creator_id", user!.id)
+    .eq("creator_id", user.id)
     .in("payment_status", ["successful", "test"])
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const rows = (tips as Tip[] | null) ?? [];
-  const byMethod = new Map<string, { total: number; currency: string }>();
-  for (const t of rows) {
-    const key = (t.payment_method ?? "other").toLowerCase();
-    const cur = byMethod.get(key) ?? { total: 0, currency: t.currency };
-    cur.total += Number(t.amount);
-    byMethod.set(key, cur);
-  }
-  const methodTotal = (m: string) => byMethod.get(m)?.total ?? 0;
-  const usdTotal = rows
-    .filter((t) => t.currency === "USD")
-    .reduce((s, t) => s + Number(t.amount), 0);
-  const khrTotal = rows
-    .filter((t) => t.currency === "KHR")
-    .reduce((s, t) => s + Number(t.amount), 0);
+  const { data: chartTips, error: chartError } = await supabase
+    .from("tips")
+    .select("amount, currency, payment_method, payment_status, created_at")
+    .eq("creator_id", user.id)
+    .eq("payment_status", "successful")
+    .gte("created_at", chartStartIso())
+    .order("created_at", { ascending: false })
+    .limit(1000);
 
-  const groupName = activeGroup?.group_title ?? null;
-  const displayName =
-    profile?.username ?? profile?.display_name ?? user!.email?.split("@")[0] ?? "Creator";
+  const { data: goals } = await supabase
+    .from("donation_goals")
+    .select("id, title, target_amount, current_amount, bar_color, is_active, currency")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  const { data: alerts, error: alertsError } = await supabase
+    .from("alert_settings")
+    .select("id, duration_seconds, sound_url, animation_type, font_color, tts_enabled")
+    .eq("user_id", user.id)
+    .limit(1);
+
+  const rows = (recentTips as Tip[] | null) ?? [];
+  const chartRows = (chartTips as ChartTip[] | null) ?? [];
+  const groupName = activeGroup?.group_title?.trim() || null;
+  const groupUnavailable = Boolean(groupError);
+  const paymentsUnavailable = Boolean(recentError);
+  const overviewUnavailable = Boolean(chartError);
+  const failedChecks = [
+    profileError,
+    groupError,
+    recentError,
+    chartError,
+    alertsError,
+  ].filter(Boolean).length;
+  const overviewDataAvailable = failedChecks === 0;
+
+  const usdSummary = summarizeCurrency(chartRows, "USD");
+  const khrSummary = summarizeCurrency(chartRows, "KHR");
+  const usdSeries = buildDailySeries(chartRows, "USD");
+  const khrSeries = buildDailySeries(chartRows, "KHR");
+  const completedPayments = usdSummary.count + khrSummary.count;
+  const completedPaymentLabel = `${completedPayments} completed ${completedPayments === 1 ? "payment" : "payments"}`;
+
+  const displayName = getDashboardDisplayName(profile, user.email);
+  const activeGoal = goals?.find((goal) => goal.is_active);
+  const goalProgress =
+    activeGoal && activeGoal.target_amount > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (activeGoal.current_amount / activeGoal.target_amount) * 100,
+          ),
+        )
+      : 0;
+
+  function goalAmountLabel(amount: number, currency?: string | null) {
+    if (currency === "KHR") {
+      return `៛ ${Number(amount).toLocaleString("en-US", {
+        maximumFractionDigits: 0,
+      })}`;
+    }
+    return `$${Number(amount).toFixed(2)}`;
+  }
+
+  const alertConfig = alerts?.[0] ?? null;
+  const alertConfigured = Boolean(alertConfig);
+  const ttsEnabled = Boolean(alertConfig?.tts_enabled);
+  const alertDurationLabel = alertConfig?.duration_seconds
+    ? `${alertConfig.duration_seconds}s alert window`
+    : "Default alert duration";
+  const nextStep = alertsError
+    ? {
+        kicker: "Needs attention",
+        title: "Check alert settings",
+        description: "The dashboard could not read your alert setup.",
+        href: "/dashboard/health",
+        action: "Open health",
+      }
+    : groupUnavailable
+      ? {
+          kicker: "Needs attention",
+          title: "Check Telegram status",
+          description: "The dashboard could not confirm your linked group.",
+          href: "/dashboard/health",
+          action: "Open health",
+        }
+      : !alertConfigured
+        ? {
+            kicker: "Before your next stream",
+            title: "Set up your first alert",
+            description: "Choose what viewers see when they support you.",
+            href: "/dashboard/widgets/alerts",
+            action: "Configure alerts",
+          }
+        : !groupName
+          ? {
+              kicker: "Connect your community",
+              title: "Link a Telegram group",
+              description: "Send stream activity to your creator chat.",
+              href: "/dashboard/kit-client",
+              action: "Connect Telegram",
+            }
+          : {
+              kicker: "Ready for your next stream",
+              title: "Check your OBS controls",
+              description: "Review your browser sources before going live.",
+              href: "/dashboard/obs",
+              action: "Open OBS controls",
+            };
 
   return (
     <div className={styles.page}>
-      {/* Header */}
-      <div className={styles.commandHeader}>
-        <div>
-          <p className={styles.kicker}>{"// STEAM KIT COMMAND CENTER"}</p>
-          <h1 className={styles.welcome}>
-            WELCOME BACK,
-            <br />
-            <span className={styles.welcomeName}>{displayName}</span>◆
+      <header className={styles.hero}>
+        <div className={styles.heroCopy}>
+          <p className={styles.eyebrow}>Creator command center</p>
+          <h1 className={styles.title}>
+            <span className={styles.heroGreeting}>Welcome back,</span>
+            {displayName}
           </h1>
-          <p className={styles.welcomeSub}>
-            <span className={styles.dot} />
-            {groupName ? groupName.toUpperCase() : "WAITING_GROUP"}
-            <span className={styles.sep}>·</span> {groupName ? "Monitoring live streams" : "Monitoring live streams"}
+          <p className={styles.heroDescription}>
+            See recent donations, alert settings, and stream tools at a glance.
           </p>
-        </div>
-        <div className={styles.headerRight}>
-          <Clock />
-        </div>
-      </div>
-
-      {/* Status module cards */}
-      <div className={styles.statusRow}>
-        <div className={styles.statusCard}>
-          <span className={`${styles.iconTile} ${styles.iconOk}`}>
-            <Cpu size={20} />
-          </span>
-          <div>
-            <p className={styles.statusLabel}>SYSTEM MANAGER</p>
-            <strong className={styles.statusValue}>Active</strong>
+          <div className={styles.heroMeta}>
+            <Link href="/dashboard/analytics" className={styles.heroLink}>
+              View analytics
+              <ArrowUpRight size={13} aria-hidden="true" />
+            </Link>
           </div>
         </div>
+        <aside className={styles.heroAside} aria-label="Next step for your stream">
+          <div className={styles.nextStepCard}>
+            <p className={styles.nextStepKicker}>{nextStep.kicker}</p>
+            <strong className={styles.nextStepTitle}>{nextStep.title}</strong>
+            <p className={styles.nextStepDescription}>
+              {nextStep.description}
+            </p>
+            <Link href={nextStep.href} className={styles.nextStepLink}>
+              {nextStep.action}
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </Link>
+          </div>
+        </aside>
+      </header>
 
-        <Link href="/dashboard/kit-client" className={styles.statusCard}>
-          <span
-            className={`${styles.iconTile} ${groupName ? styles.iconOk : styles.iconWarn}`}
+      <div className={styles.sectionHead}>
+        <div>
+          <p className={styles.sectionKicker}>Workspace</p>
+          <h2 className={styles.sectionTitle}>At a glance</h2>
+        </div>
+        <p className={styles.sectionNote}>
+          Recent payments and stream setup in one place.
+        </p>
+      </div>
+
+      <section className={styles.statusGrid} aria-label="Workspace status">
+        <article
+          className={`${styles.statCard} ${
+            overviewDataAvailable ? styles.statCardHealthy : styles.statCardWarning
+          }`}
+        >
+          <div className={styles.statTop}>
+            <span className={styles.statIcon}>
+              <Activity size={16} aria-hidden="true" />
+            </span>
+            <span className={styles.statLabel}>Data checks</span>
+            <span
+              className={`${styles.statFlag} ${
+                overviewDataAvailable ? styles.statFlagOk : styles.statFlagWarn
+              }`}
+            >
+              {overviewDataAvailable ? (
+                <CheckCircle2 size={11} aria-hidden="true" />
+              ) : (
+                <AlertTriangle size={11} aria-hidden="true" />
+              )}
+              {overviewDataAvailable ? "Loaded" : "Partial"}
+            </span>
+          </div>
+          <strong className={styles.statValue}>
+            {overviewDataAvailable
+              ? "Dashboard data available"
+              : `${failedChecks} data source${failedChecks === 1 ? "" : "s"} unavailable`}
+          </strong>
+          <p className={styles.statMeta}>
+            {overviewDataAvailable
+              ? "Profile, payments, Telegram, alerts, and analytics loaded."
+              : "Some dashboard data could not be loaded."}
+          </p>
+          <Link href="/dashboard/health" className={styles.statLink}>
+            Review health
+            <ArrowUpRight size={12} aria-hidden="true" />
+          </Link>
+        </article>
+
+        <article className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statIcon}>
+              <Send size={16} aria-hidden="true" />
+            </span>
+            <span className={styles.statLabel}>Telegram</span>
+            <span
+              className={`${styles.statFlag} ${
+                groupUnavailable
+                  ? styles.statFlagWarn
+                  : groupName
+                    ? styles.statFlagOk
+                    : styles.statFlagIdle
+              }`}
+            >
+              {groupUnavailable ? "Unavailable" : groupName ? "Linked" : "Not linked"}
+            </span>
+          </div>
+          <strong className={styles.statValue} title={groupName ?? undefined}>
+            {groupUnavailable ? "Unavailable" : groupName ?? "Not linked"}
+          </strong>
+          <p className={styles.statMeta}>
+            {groupUnavailable
+              ? "Could not check Telegram groups."
+              : groupName
+                ? "Active group in Kit Client."
+                : "No active Telegram group is linked yet."}
+          </p>
+          {!groupUnavailable && !groupName ? (
+            <Link href="/dashboard/kit-client" className={styles.statLink}>
+              Link a group
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+          ) : (
+            <Link href="/dashboard/kit-client" className={styles.statLink}>
+              Open Kit Client
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+          )}
+        </article>
+
+        <article className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statIcon}>
+              <HandCoins size={16} aria-hidden="true" />
+            </span>
+            <span className={styles.statLabel}>Payments</span>
+            <span className={`${styles.statFlag} ${styles.statFlagIdle}`}>
+              Last 31 days
+            </span>
+          </div>
+          <strong className={styles.statValue}>
+            {overviewUnavailable
+              ? "Unavailable"
+              : completedPaymentLabel}
+          </strong>
+          <p className={styles.statMeta}>
+            {overviewUnavailable
+              ? "Payment totals could not be loaded."
+              : `${amountLabel(usdSummary.total, "USD")} USD · ${amountLabel(khrSummary.total, "KHR")}`}
+          </p>
+          <Link href="/dashboard/donations" className={styles.statLink}>
+            Review donations
+            <ArrowUpRight size={12} aria-hidden="true" />
+          </Link>
+        </article>
+
+        <article className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statIcon}>
+              <BellRing size={16} aria-hidden="true" />
+            </span>
+            <span className={styles.statLabel}>Alerts</span>
+            <span
+              className={`${styles.statFlag} ${
+                alertsError
+                  ? styles.statFlagWarn
+                  : alertConfigured
+                    ? styles.statFlagOk
+                    : styles.statFlagIdle
+              }`}
+            >
+              {alertsError
+                ? "Attention"
+                : ttsEnabled
+                  ? "Speech on"
+                  : "Speech off"}
+            </span>
+          </div>
+          <strong className={styles.statValue}>
+            {alertsError
+              ? "Unavailable"
+              : alertConfigured
+                ? "Settings saved"
+                : "Not configured"}
+          </strong>
+          <p className={styles.statMeta}>
+            {alertsError
+              ? "Alert settings could not be loaded."
+              : alertConfigured
+                ? `${alertDurationLabel} · speech setting ${ttsEnabled ? "on" : "off"}`
+                : "Create an alert before going live."}
+          </p>
+          <Link
+            href={alertConfigured ? "/dashboard/voice-settings" : "/dashboard/widgets/alerts"}
+            className={styles.statLink}
           >
-            <Link2 size={20} />
-          </span>
-          <div>
-            <p className={styles.statusLabel}>BOT SIGNAL</p>
-            {groupName ? (
-              <strong className={styles.statusValue}>Receiving</strong>
-            ) : (
-              <>
-                <strong className={`${styles.statusValue} ${styles.statusWarn}`}>
-                  SETUP
-                  <br />
-                  REQUIRED
-                </strong>
-                <p className={styles.cardMeta}>Please link a group in settin...</p>
-              </>
-            )}
-          </div>
-        </Link>
+            {alertConfigured ? "Voice settings" : "Configure alerts"}
+            <ArrowUpRight size={12} aria-hidden="true" />
+          </Link>
+        </article>
+      </section>
 
-        <Link href="/dashboard/settings" className={styles.statusCard}>
-          <span className={`${styles.iconTile} ${styles.iconMuted}`}>
-            <DiscordIcon size={20} />
-          </span>
-          <div>
-            <p className={styles.statusLabel}>DISCORD</p>
-            <strong className={styles.statusValue}>Unlinked</strong>
-            <p className={styles.cardMeta}>Click to link account</p>
-          </div>
-        </Link>
-
-        <div className={styles.statusCard}>
-          <span className={`${styles.iconTile} ${styles.iconOk}`}>
-            <Tv size={20} />
-          </span>
-          <div>
-            <p className={styles.statusLabel}>OBS LINKS</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <ObsLinkRow label="Alert Widget" path="/overlay/alerts" />
-              <ObsLinkRow label="Donation Dock" path="/overlay/feed" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Donations overview + recent */}
-      <div className={styles.grid2}>
+      <section className={styles.mainGrid} aria-label="Donation activity">
         <DonationsOverview
-          usd={{
-            aba: rows
-              .filter((t) => t.currency === "USD" && (t.payment_method ?? "").toLowerCase() === "aba_payway")
-              .reduce((s, t) => s + Number(t.amount), 0),
-            bakong: rows
-              .filter((t) => t.currency === "USD" && (t.payment_method ?? "").toLowerCase() === "bakong")
-              .reduce((s, t) => s + Number(t.amount), 0),
-          }}
-          khr={{
-            aba: rows
-              .filter((t) => t.currency === "KHR" && (t.payment_method ?? "").toLowerCase() === "aba_payway")
-              .reduce((s, t) => s + Number(t.amount), 0),
-            bakong: rows
-              .filter((t) => t.currency === "KHR" && (t.payment_method ?? "").toLowerCase() === "bakong")
-              .reduce((s, t) => s + Number(t.amount), 0),
-          }}
+          usd={usdSummary}
+          khr={khrSummary}
+          usdSeries={usdSeries}
+          khrSeries={khrSeries}
+          unavailable={overviewUnavailable}
         />
 
-        <div className={styles.panel}>
+        <section
+          className={`${styles.panel} ${styles.recentPanel}`}
+          aria-labelledby="recent-donations-title"
+        >
           <div className={styles.panelHead}>
-            <h3>
-              <span className={styles.vBar} /> Recent Donations
-            </h3>
-            <span className={styles.liveChip}>
-              <span className={styles.dot} /> LIVE
+            <div className={styles.panelTitleGroup}>
+              <p className={styles.panelKicker}>Latest activity</p>
+              <h2 id="recent-donations-title" className={styles.panelTitle}>
+                Recent Donations
+              </h2>
+            </div>
+            <span className={styles.snapshotBadge}>
+              <span className={styles.snapshotDot} aria-hidden="true" />
+              Latest 5
             </span>
           </div>
-          {rows.length === 0 ? (
-            <div className={styles.recentEmpty}>
-              <span className={styles.emptyIcon}>
-                <ScrollText size={26} />
-              </span>
-              <strong>No Recent Activity</strong>
-              <p className={styles.cardMeta}>
-                Your latest donations will appear here.
+
+          {paymentsUnavailable ? (
+            <div className={styles.errorState} role="alert">
+              <strong>Donations unavailable</strong>
+              <p>
+                The latest payment rows could not be loaded. Refresh to try
+                again.
               </p>
             </div>
-          ) : (
-            <div className={styles.recentList}>
-              {rows.slice(0, 5).map((t) => (
-                <div key={t.id} className={styles.recentRow}>
-                  <span>
-                    {t.currency === "KHR"
-                      ? `KHR ${Number(t.amount).toLocaleString()}`
-                      : `$${Number(t.amount).toFixed(2)}`}
-                  </span>
-                  <span className={styles.cardMeta}>{t.tipper_name}</span>
-                  <span className={styles.cardMeta}>
-                    {new Date(t.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
+          ) : rows.length === 0 ? (
+            <div className={styles.emptyState} role="status">
+              <span className={styles.emptyIcon}>
+                <HandCoins size={20} aria-hidden="true" />
+              </span>
+              <strong>No recent payments</strong>
+              <p>Completed and test donations will appear here.</p>
             </div>
+          ) : (
+            <ul className={styles.recentList}>
+              {rows.slice(0, 5).map((tip) => (
+                <li key={tip.id} className={styles.recentItem}>
+                  <span className={styles.recentAmount}>
+                    {amountLabel(Number(tip.amount), tip.currency)}
+                  </span>
+                  <span className={styles.recentIdentity}>
+                    <strong className={styles.recentDonor}>
+                      {tip.tipper_name}
+                    </strong>
+                    {tip.message ? (
+                      <span className={styles.recentMessage} title={tip.message}>
+                        {tip.message}
+                      </span>
+                    ) : null}
+                    <span className={styles.recentMeta}>
+                      {alertHistorySourceLabel(tip.payment_method)}
+                      <span
+                        className={tip.payment_status === "test" ? styles.testTag : styles.paidTag}
+                      >
+                        {tip.payment_status === "test" ? "Test" : "Paid"}
+                      </span>
+                    </span>
+                  </span>
+                  <time className={styles.recentDate} dateTime={tip.created_at}>
+                    {shortDate(tip.created_at)}
+                  </time>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      </div>
 
-      {/* Quick commands */}
-      <div className={styles.panel}>
-        <div className={styles.panelHead}>
-          <h3>
-            <span className={styles.vBar} /> Quick Commands
-          </h3>
+          <div className={styles.panelFooter}>
+            <Link href="/dashboard/donations" className={styles.textLink}>
+              Open donation history
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+      </section>
+
+      <section className={styles.block} aria-labelledby="quick-commands-title">
+        <div className={styles.blockHead}>
+          <div>
+            <h2 id="quick-commands-title" className={styles.blockTitle}>
+              Quick actions
+            </h2>
+          </div>
+          <p className={styles.blockNote}>
+            Open common controls before or during a stream.
+          </p>
         </div>
-        <div className={styles.cmdGrid}>
-          <Link href="/dashboard/donations" className={styles.cmdCard}>
-            <span className={`${styles.iconTile} ${styles.iconOk}`}>
-              <ScrollText size={18} />
-            </span>
-            <h4>View Donation Logs</h4>
-            <p className={styles.cardMeta}>
-              Access detailed transaction history and analytics.
-            </p>
-            <span className={styles.cmdAction}>View Logs →</span>
-          </Link>
-          <Link href="/dashboard/alerts" className={styles.cmdCard}>
-            <span className={`${styles.iconTile} ${styles.iconOk}`}>
-              <Settings size={18} />
-            </span>
-            <h4>Configure Alerts</h4>
-            <p className={styles.cardMeta}>
-              Customize your OBS widget appearance and sounds.
-            </p>
-            <span className={styles.cmdAction}>Settings →</span>
-          </Link>
+
+        <div className={styles.commandGrid}>
           <Link
-            href="/dashboard/alerts"
-            className={`${styles.cmdCard} ${styles.cmdDanger}`}
+            href="/dashboard/donations"
+            className={`${styles.commandCard} ${styles.commandPrimary}`}
           >
-            <span className={`${styles.iconTile} ${styles.iconDanger}`}>
-              <SkipForward size={18} />
+            <span className={`${styles.commandIcon} ${styles.commandIconPrimary}`}>
+              <ReceiptText size={17} aria-hidden="true" />
             </span>
-            <h4>Skip Alert / Video</h4>
-            <p className={styles.cardMeta}>
-              Instantly stop current TTS or Media Share on OBS.
-            </p>
-            <span className={`${styles.execute} ${styles.cmdAction}`}>
-              Execute <Zap size={13} />
+            <span className={styles.commandCopy}>
+              <strong>Review donations</strong>
+              <span>Check payment status, filters, and history.</span>
             </span>
+            <ArrowUpRight
+              className={styles.commandArrow}
+              size={15}
+              aria-hidden="true"
+            />
+          </Link>
+
+          <Link href="/dashboard/widgets/alerts" className={styles.commandCard}>
+            <span className={styles.commandIcon}>
+              <BellRing size={17} aria-hidden="true" />
+            </span>
+            <span className={styles.commandCopy}>
+              <strong>Configure alerts</strong>
+              <span>Update alert content and test the OBS overlay.</span>
+            </span>
+            <ArrowUpRight
+              className={styles.commandArrow}
+              size={15}
+              aria-hidden="true"
+            />
+          </Link>
+
+          <Link
+            href="/dashboard/media-share"
+            className={styles.commandCard}
+          >
+            <span className={styles.commandIcon}>
+              <Film size={17} aria-hidden="true" />
+            </span>
+            <span className={styles.commandCopy}>
+              <strong>Review media queue</strong>
+              <span>Check queued videos and skip one.</span>
+            </span>
+            <ArrowUpRight
+              className={styles.commandArrow}
+              size={15}
+              aria-hidden="true"
+            />
+          </Link>
+
+          <Link href="/dashboard/goals" className={styles.commandCard}>
+            <span className={styles.commandIcon}>
+              <TrendingUp size={17} aria-hidden="true" />
+            </span>
+            <span className={styles.commandCopy}>
+              <strong>Manage goals</strong>
+              <span>Create or update a fundraising target.</span>
+            </span>
+            <ArrowUpRight
+              className={styles.commandArrow}
+              size={15}
+              aria-hidden="true"
+            />
           </Link>
         </div>
-      </div>
+      </section>
+
+      {activeGoal ? (
+        <section className={styles.block} aria-labelledby="active-goal-title">
+          <div className={styles.blockHead}>
+            <div>
+              <p className={styles.panelKicker}>Active goal</p>
+              <h2 id="active-goal-title" className={styles.blockTitle}>
+                {activeGoal.title}
+              </h2>
+            </div>
+            <Link href="/dashboard/goals" className={styles.textLink}>
+              Manage goals
+              <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+          </div>
+          <div
+            className={styles.goalCard}
+            style={
+              {
+                "--bar-color": activeGoal.bar_color || "var(--dash-action)",
+              } as React.CSSProperties
+            }
+          >
+            <div className={styles.goalTop}>
+              <span className={styles.goalProgress}>{goalProgress}%</span>
+              <span className={styles.goalAmounts}>
+                {goalAmountLabel(activeGoal.current_amount, activeGoal.currency)}
+                <span> of </span>
+                {goalAmountLabel(activeGoal.target_amount, activeGoal.currency)}
+              </span>
+            </div>
+            <div
+              className={styles.goalBarTrack}
+              role="progressbar"
+              aria-label={`${activeGoal.title} progress`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={goalProgress}
+            >
+              <div
+                className={styles.goalBarFill}
+                style={{ width: `${goalProgress}%` }}
+              />
+            </div>
+            <div className={styles.goalFooter}>
+              <span>Fundraising target</span>
+              <Link href="/dashboard/goals" className={styles.textLink}>
+                Open goals
+                <ArrowUpRight size={12} aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className={styles.block} aria-labelledby="tools-setup-title">
+        <div className={styles.blockHead}>
+          <div>
+            <p className={styles.panelKicker}>Output & help</p>
+            <h2 id="tools-setup-title" className={styles.blockTitle}>
+              Tools & Setup
+            </h2>
+          </div>
+          <p className={styles.blockNote}>
+            Keep OBS and the desktop client aligned.
+          </p>
+        </div>
+
+        <div className={styles.supportGrid}>
+          <section
+            id="obs-links"
+            className={styles.panel}
+            aria-labelledby="overlay-links-title"
+          >
+            <div className={styles.panelHead}>
+              <div className={styles.panelTitleGroup}>
+                <p className={styles.panelKicker}>Browser sources</p>
+                <h3 id="overlay-links-title" className={styles.panelTitle}>
+                  OBS Overlay Links
+                </h3>
+              </div>
+              <span className={styles.panelIcon}>
+                <MonitorPlay size={15} aria-hidden="true" />
+              </span>
+            </div>
+            <p className={styles.panelDescription}>
+              Copy an overlay URL into OBS as a browser source. Each link uses
+              your saved overlay credential.
+            </p>
+            <div className={styles.overlayList}>
+              <ObsLinkRow label="Alert widget" path="/overlay/alerts" />
+              <ObsLinkRow label="Donation dock" path="/overlay/feed" />
+            </div>
+            <p className={styles.note}>
+              If a link is unavailable, open{" "}
+              <Link href="/dashboard/widgets/alerts">Alerts</Link> once to initialize
+              your overlay credential, then return here.
+            </p>
+          </section>
+
+          <section className={styles.panel} aria-labelledby="setup-shortcuts-title">
+            <div className={styles.panelHead}>
+              <div className={styles.panelTitleGroup}>
+                <p className={styles.panelKicker}>Creator studio</p>
+                <h3 id="setup-shortcuts-title" className={styles.panelTitle}>
+                  Continue Setting Up
+                </h3>
+              </div>
+              <span className={styles.panelIcon}>
+                <BookOpen size={15} aria-hidden="true" />
+              </span>
+            </div>
+            <p className={styles.panelDescription}>
+              Follow a walkthrough, check service health, or manage the desktop
+              client.
+            </p>
+            <ul className={styles.shortcutList}>
+              <li>
+                <Link href="/setup-guides" className={styles.shortcut}>
+                  <span className={styles.shortcutIcon}>
+                    <BookOpen size={14} aria-hidden="true" />
+                  </span>
+                  <span className={styles.shortcutCopy}>
+                    <strong>Setup Guides</strong>
+                    <span>
+                      Step-by-step walkthroughs for alerts, Telegram, tipping,
+                      and overlays.
+                    </span>
+                  </span>
+                  <ArrowUpRight
+                    className={styles.shortcutArrow}
+                    size={13}
+                    aria-hidden="true"
+                  />
+                </Link>
+              </li>
+              <li>
+                <Link href="/dashboard/health" className={styles.shortcut}>
+                  <span className={styles.shortcutIcon}>
+                    <MonitorPlay size={14} aria-hidden="true" />
+                  </span>
+                  <span className={styles.shortcutCopy}>
+                    <strong>Health & alerts</strong>
+                    <span>
+                      Review service signals and recent alert events before
+                      going live.
+                    </span>
+                  </span>
+                  <ArrowUpRight
+                    className={styles.shortcutArrow}
+                    size={13}
+                    aria-hidden="true"
+                  />
+                </Link>
+              </li>
+              <li>
+                <Link href="/dashboard/kit-client" className={styles.shortcut}>
+                  <span className={styles.shortcutIcon}>
+                    <Zap size={14} aria-hidden="true" />
+                  </span>
+                  <span className={styles.shortcutCopy}>
+                    <strong>Kit Client</strong>
+                    <span>
+                      Manage the desktop client and your active Telegram group.
+                    </span>
+                  </span>
+                  <ArrowUpRight
+                    className={styles.shortcutArrow}
+                    size={13}
+                    aria-hidden="true"
+                  />
+                </Link>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <p className={styles.pageNote}>
+        <WalletCards size={12} aria-hidden="true" />
+        Donation totals use completed payments from the last {CHART_DAYS} days in
+        ICT. Test events stay labeled in recent activity.
+      </p>
     </div>
   );
 }

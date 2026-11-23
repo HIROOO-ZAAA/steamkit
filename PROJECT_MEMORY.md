@@ -29,7 +29,7 @@ StreamKit is a real-time creator tipping platform with livestream alerts, OBS ov
 - /dashboard/kit-client
 
 ## Important Files
-- src/components/DashboardNav.tsx
+- src/components/dashboard/DashboardNav.tsx
 - src/components/ui/SteamKitMark.tsx
 - src/app/dashboard/page.tsx
 - scripts/kit-client-bridge.mjs
@@ -1196,3 +1196,41 @@ perceived delay is synthesis: this provider takes 7-8s to render a line
 There is no SQL-exec helper on this project -- probed every plausible name and
 read the 34 exposed RPCs. DDL genuinely cannot be applied from the app, so the
 paste-by-hand step is not an oversight.
+
+## Role escalation blocked (2026-10-29)
+
+The live policy "Users manage own profile" was `FOR ALL USING (auth.uid() = id)`
+with no column restriction, and `authenticated` had table-level `UPDATE` on
+`profiles`. Any signed-in creator could call PostgREST directly and set
+`role = 'admin'`, then pass `requireAdmin()` in `/api/admin/payment-config`.
+
+Fixed in `20261029000000_profiles_role_guard.sql` (two layers of defence):
+
+1. **Column-level REVOKE**: `revoke update (role) on table public.profiles from
+   authenticated` — PostgREST rejects any `UPDATE SET` list that includes the
+   `role` column for an authenticated caller before the trigger even fires.
+2. **BEFORE UPDATE trigger** `streamkit_guard_profile_role`: aborts any write
+   where `old.role is distinct from new.role` and
+   `current_setting('role', true)` is not `service_role`. Service_role callers
+   (Supabase dashboard SQL editor, admin API) are unaffected.
+
+Both guards are in `supabase_schema.sql` too, so a fresh bootstrap gets them.
+
+Provisioning a real admin still requires the service role (e.g. the dashboard
+SQL editor: `UPDATE profiles SET role = 'admin' WHERE id = '<uuid>'`).
+
+Also fixed in the same session: `supabase.auth.signUp()` in
+`src/app/auth/page.tsx` was missing `emailRedirectTo`. Without it, the
+confirmation email uses the Supabase project's Site URL (currently
+`http://localhost:3000`), so the link cannot return to a production host. Now
+passes `${window.location.origin}/auth/callback`, matching the OAuth path.
+
+**Still required before production:**
+- Apply `20261026000000_tips_owner_scoped_reads.sql` (owner-scoped tips reads +
+  supporter RPC + spin-tip RPC).
+- Apply `20261029000000_profiles_role_guard.sql` (role escalation block).
+- Set the Supabase Site URL to the production HTTPS origin and add
+  `<origin>/auth/callback` to the redirect allow-list.
+- Provision one admin account through the service role and verify that a
+  non-admin 403s on `/api/admin/payment-config`.
+

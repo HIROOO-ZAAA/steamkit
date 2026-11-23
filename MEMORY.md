@@ -1,0 +1,1 @@
+- [Critical Payment Idempotency Revision](payment-idempotency-revised.md) — high

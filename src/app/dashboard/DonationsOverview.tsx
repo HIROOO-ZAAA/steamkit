@@ -1,81 +1,255 @@
 "use client";
 
 import { useState } from "react";
-import { ScrollText } from "lucide-react";
 import styles from "./dashboard.module.css";
 
-type Totals = { aba: number; bakong: number };
+type CurrencySummary = {
+  total: number;
+  aba: number;
+  bakong: number;
+  count: number;
+  abaCount: number;
+  bakongCount: number;
+};
+
+type DailyDonationPoint = {
+  key: string;
+  label: string;
+  total: number;
+};
 
 export default function DonationsOverview({
   usd,
   khr,
+  usdSeries,
+  khrSeries,
+  unavailable = false,
 }: {
-  usd: Totals;
-  khr: Totals;
+  usd: CurrencySummary;
+  khr: CurrencySummary;
+  usdSeries: DailyDonationPoint[];
+  khrSeries: DailyDonationPoint[];
+  unavailable?: boolean;
 }) {
   const [tab, setTab] = useState<"USD" | "KHR">("USD");
   const active = tab === "USD" ? usd : khr;
-  const fmt = (v: number) =>
-    tab === "USD" ? `$${v.toFixed(2)}` : `៛${v.toLocaleString()}`;
+  const series = tab === "USD" ? usdSeries : khrSeries;
+  const peak = series.reduce((max, point) => Math.max(max, point.total), 0);
+
+  const fmt = (value: number) =>
+    tab === "USD"
+      ? `$${value.toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`
+      : `KHR ${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+  const otherAmount = Math.max(0, active.total - active.aba - active.bakong);
+  const otherCount = Math.max(0, active.count - active.abaCount - active.bakongCount);
+  const methods = [
+    {
+      key: "aba",
+      label: "ABA PayWay",
+      amount: active.aba,
+      count: active.abaCount,
+      dotClass: styles.methodDotAba,
+      barClass: styles.methodBarAba,
+    },
+    {
+      key: "bakong",
+      label: "Bakong",
+      amount: active.bakong,
+      count: active.bakongCount,
+      dotClass: styles.methodDotBakong,
+      barClass: styles.methodBarBakong,
+    },
+    ...(otherAmount > 0.004 || otherCount > 0
+      ? [
+          {
+            key: "other",
+            label: "Other",
+            amount: otherAmount,
+            count: otherCount,
+            dotClass: styles.methodDotOther,
+            barClass: styles.methodBarOther,
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <div className={styles.panel}>
+    <section
+      className={`${styles.panel} ${styles.overviewPanel}`}
+      aria-labelledby="donations-method-title"
+    >
       <div className={styles.panelHead}>
-        <div>
-          <h3>
-            <span className={styles.vBar} /> Donations Overview
-          </h3>
-          <p className={styles.cardMeta}>Daily donations by payment method</p>
+        <div className={styles.panelTitleGroup}>
+          <p className={styles.panelKicker}>Payment mix</p>
+          <h2 id="donations-method-title" className={styles.panelTitle}>
+            Donations Overview
+          </h2>
         </div>
-        <div className={styles.curveSide}>
-          <div className={styles.tabs}>
-            <button
-              type="button"
-              onClick={() => setTab("USD")}
-              className={`${styles.tab} ${tab === "USD" ? styles.tabActive : ""}`}
-            >
-              USD
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("KHR")}
-              className={`${styles.tab} ${tab === "KHR" ? styles.tabActive : ""}`}
-            >
-              KHR
-            </button>
-          </div>
-          <div className={styles.bigStats}>
-            <div>
-              <span className={styles.statLabel}>ABA</span>
-              <strong className={styles.bigNum}>{fmt(active.aba)}</strong>
-            </div>
-            <div>
-              <span className={styles.statLabel}>BAKONG</span>
-              <strong className={styles.bigNum}>{fmt(active.bakong)}</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className={styles.chart}>
-        <div className={styles.yAxis}>
-          {(tab === "USD"
-            ? [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0].map((v) => `$${v.toFixed(2)}`)
-            : [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map((v) => `៛${v}`)
-          ).map((label) => (
-            <span key={label}>{label}</span>
-          ))}
-        </div>
-        <div className={styles.chartBody}>
-          {Array.from({ length: 11 }).map((_, i) => (
-            <div key={i} className={styles.gridLine} />
-          ))}
-          <div className={styles.xAxis}>
-            {Array.from({ length: 31 }, (_, i) => (
-              <span key={i}>{i + 1}</span>
-            ))}
-          </div>
+
+        <div
+          className={styles.currencyTabs}
+          role="group"
+          aria-label="Donation currency"
+        >
+          <button
+            type="button"
+            className={`${styles.currencyTab} ${
+              tab === "USD" ? styles.currencyTabActive : ""
+            }`}
+            onClick={() => setTab("USD")}
+            aria-pressed={tab === "USD"}
+            disabled={unavailable}
+          >
+            USD
+          </button>
+          <button
+            type="button"
+            className={`${styles.currencyTab} ${
+              tab === "KHR" ? styles.currencyTabActive : ""
+            }`}
+            onClick={() => setTab("KHR")}
+            aria-pressed={tab === "KHR"}
+            disabled={unavailable}
+          >
+            KHR
+          </button>
         </div>
       </div>
-    </div>
+
+      {unavailable ? (
+        <div className={styles.errorState} role="alert">
+          <strong>Payment totals unavailable</strong>
+          <p>
+            The latest payment rows could not be loaded. Refresh to try again.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className={styles.overviewSummary}>
+            <div className={styles.overviewTotal}>
+              <span className={styles.overviewLabel}>Last 31 days</span>
+              <strong className={styles.currencyValue}>{fmt(active.total)}</strong>
+            </div>
+            <span className={styles.currencyCount}>
+              {active.count} completed payment{active.count === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className={styles.chartBlock}>
+            <div className={styles.chartHead}>
+              <span className={styles.chartTitle}>Daily volume · 31 days</span>
+              <span className={styles.chartPeak}>
+                {peak > 0 ? `Peak ${fmt(peak)}` : "No activity in this period"}
+              </span>
+            </div>
+            <div
+              className={styles.chartPlot}
+              role="img"
+              aria-label={
+                peak > 0
+                  ? `Daily ${tab} donations for the last 31 days. Peak ${fmt(peak)}.`
+                  : `No completed ${tab} donations in the last 31 days.`
+              }
+            >
+              {peak === 0 ? (
+                <span className={styles.chartNoActivity}>
+                  No donation activity yet
+                </span>
+              ) : null}
+              <div className={styles.chartBars}>
+                {series.map((point) => {
+                  const height =
+                    point.total > 0
+                      ? Math.max(2, (point.total / peak) * 100)
+                      : 0;
+
+                  return (
+                    <span
+                      key={point.key}
+                      className={styles.chartBar}
+                      title={`${point.label}: ${fmt(point.total)}`}
+                    >
+                      <span
+                        className={styles.chartFill}
+                        style={{ height: `${height}%` }}
+                      />
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={styles.chartAxis} aria-hidden="true">
+              {series.map((point, index) => (
+                <span
+                  key={point.key}
+                  className={`${styles.chartAxisLabel} ${
+                    index === 0 ||
+                    index === series.length - 1 ||
+                    index % 6 === 0
+                      ? styles.chartAxisLabelVisible
+                      : ""
+                  }`}
+                >
+                  {point.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.methodGrid}>
+            {methods.map((method) => {
+              const share =
+                active.total > 0
+                  ? Math.round((method.amount / active.total) * 100)
+                  : 0;
+
+              return (
+                <div key={method.key} className={styles.methodCard}>
+                  <div className={styles.methodLine}>
+                    <span className={styles.methodLabel}>
+                      <span
+                        className={`${styles.methodDot} ${method.dotClass}`}
+                        aria-hidden="true"
+                      />
+                      {method.label}
+                    </span>
+                    <strong className={styles.methodValue}>
+                      {fmt(method.amount)}
+                    </strong>
+                  </div>
+                  <div className={styles.methodBottom}>
+                    <span className={styles.methodCount}>
+                      {method.count} payment{method.count === 1 ? "" : "s"}
+                    </span>
+                    <span className={styles.methodShare}>{share}%</span>
+                  </div>
+                  <div
+                    className={styles.methodBar}
+                    role="img"
+                    aria-label={`${method.label}: ${fmt(method.amount)}, ${method.count} payments, ${share}% of ${tab} donations`}
+                  >
+                    <span
+                      className={`${styles.methodBarFill} ${method.barClass}`}
+                      style={{ width: `${share}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className={styles.panelFooter}>
+        <p className={styles.note}>
+          Completed payments only, from the last 31 days in ICT. The chart uses
+          up to 1,000 successful rows.
+        </p>
+      </div>
+    </section>
   );
 }

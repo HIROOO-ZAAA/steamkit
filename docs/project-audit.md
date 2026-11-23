@@ -18,7 +18,7 @@ The repository has an existing `PHASED_IMPLEMENTATION_PLAN.md`; this audit recor
 - Next.js 16.3.8 App Router, React 19.2.8, and TypeScript 5.
 - Supabase JS 2 and `@supabase/ssr`; no ORM or migration runner is configured.
 - Routes and route-level CSS Modules are under `src/app/`.
-- Shared UI files are under `src/components/ui/`; shared navigation is `src/components/DashboardNav.tsx`.
+- Shared UI files are under `src/components/ui/`; dashboard navigation is `src/components/dashboard/DashboardNav.tsx`.
 - Supabase browser/server clients are under `src/lib/supabase/`; shared row types are in `src/lib/types.ts`.
 - `supabase_schema.sql` is the only checked-in database schema artifact. There is no `src/app/api/` route tree or `supabase/` migrations/functions directory.
 - `public/` contains the default Next.js SVG assets; no product-specific media assets were found.

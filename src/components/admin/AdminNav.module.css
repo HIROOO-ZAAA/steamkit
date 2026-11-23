@@ -1,0 +1,459 @@
+/* =========================================================
+   Admin sidebar – streamlined platform control room
+   Built from the dashboard shell with platform-appropriate styling
+   ========================================================= */
+
+/* ---------- Shell ---------- */
+
+.adminShell {
+  --admin-nav-bg: #0b1424;
+  --admin-nav-bg: var(--dash-nav-bg);
+  background-color: var(--dash-canvas);
+  color: var(--dash-text);
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w, 264px);
+  padding: 1rem 0.75rem 0.85rem;
+  border-right: 1px solid var(--dash-border);
+  background-color: var(--dash-nav-bg);
+  background-image: radial-gradient(
+    420px 300px at 0% 0%,
+    var(--dash-aurora-1),
+    transparent 72%
+  );
+  z-index: 90;
+  transition:
+    width var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* ---------- Mobile chrome ---------- */
+
+.mobileHeader {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    top: 58px;
+    width: min(280px, 88vw);
+    padding: 1rem 0.75rem;
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: var(--dash-shadow-lg);
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 220ms;
+  }
+
+  .mobileVisible {
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
+  }
+
+  .mobileHeader {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 58px;
+    padding: 0 0.9rem;
+    border-bottom: 1px solid var(--dash-border);
+    background: var(--dash-nav-bg);
+    z-index: 95;
+  }
+
+  .mobileBrand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .mobileBrandText {
+    color: var(--dash-text);
+    font: 700 0.92rem "Rajdhani", sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileActions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .mobileToggleBtn {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--dash-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--dash-text);
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .mobileToggleBtn:hover {
+    border-color: var(--dash-border-strong);
+    background: var(--dash-surface-hover);
+  }
+
+  .mobileToggleActive {
+    border-color: var(--dash-success-border);
+    background: var(--dash-action-soft);
+    color: var(--dash-primary);
+  }
+
+  /* Scrim for mobile drawer */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    display: none;
+    background: var(--dash-scrim);
+    opacity: 0;
+    visibility: hidden;
+    z-index: 88;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 180ms;
+  }
+
+  .scrimVisible {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 0s;
+  }
+}
+
+/* ---------- Brand ---------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0.1rem 0.35rem 0.85rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+.brand svg {
+  width: 20px;
+  height: 20px;
+  color: var(--dash-accent-strong);
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandName {
+  color: var(--dash-text);
+  font: 700 0.92rem/1.1 "Rajdhani", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brandSub {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font-size: 0.61rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Nav ---------- */
+
+.nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: var(--dash-border-strong) transparent;
+}
+
+.navItems {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.8rem 0.4rem 0.18rem;
+  overflow: hidden;
+  color: var(--dash-text-muted);
+  font: 700 0.56rem/1.4 "Rajdhani", sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.navGroup:first-child .sectionLabel {
+  margin-top: 0.15rem;
+}
+
+.sectionText {
+  flex: none;
+}
+
+.sectionRule {
+  flex: 1;
+  min-width: 12px;
+  height: 1px;
+  background: var(--dash-border);
+}
+
+.navLink {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 31px;
+  padding: 0.32rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--dash-text-secondary);
+  font-size: 0.79rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.navLink::before {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--dash-action);
+  content: "";
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.navLink:hover {
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+.navLink:focus-visible {
+  outline-offset: 0;
+}
+
+.navLink.active {
+  border-color: var(--dash-success-border);
+  background: linear-gradient(90deg, var(--dash-action-soft), transparent 100%);
+  color: var(--dash-text);
+  font-weight: 600;
+}
+
+.navLink.active::before {
+  transform: scaleY(1);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  flex: none;
+  border-radius: 5px;
+  color: var(--dash-text-muted);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.navLink:hover .icon {
+  background: var(--dash-surface-raised);
+  color: var(--dash-text);
+  transform: scale(1.05);
+}
+
+.navLink.active .icon {
+  background: var(--dash-action-soft);
+  color: var(--dash-primary);
+}
+
+.linkText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Account footer ---------- */
+
+.userSection {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--dash-border);
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: var(--dash-surface);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--dash-success-border);
+  border-radius: 50%;
+  background: var(--dash-action-soft);
+  color: var(--dash-success);
+  font: 700 0.82rem "Rajdhani", sans-serif;
+}
+
+.userDetails {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.userRole {
+  margin-top: 1px;
+  color: var(--dash-text-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.superAdminBadge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 6px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 4px;
+  background: var(--dash-danger-bg);
+  border: 1px solid var(--dash-danger-border);
+  color: var(--dash-danger);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.footerActions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.signOutBtn {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid transparent;
+  font-size: 0.68rem;
+  color: var(--dash-text-secondary);
+}
+
+.signOutBtn:hover:not(:disabled) {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-bg);
+  color: var(--dash-danger);
+}
+
+.signOutIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.backBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 34px;
+  padding: 0.32rem 0.5rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-surface);
+  color: var(--dash-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.backBtn:hover {
+  border-color: var(--dash-accent);
+  background: var(--dash-surface-hover);
+  color: var(--dash-text);
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .navLink,
+  .navLink::before,
+  .icon,
+  .signOutBtn,
+  .backBtn {
+    transition-duration: 1ms !important;
+  }
+}

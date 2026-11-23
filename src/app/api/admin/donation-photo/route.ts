@@ -1,5 +1,6 @@
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCreatorAdmin, auditLog, getClientIp, getUserAgent } from "@/lib/auth/requirePlatformRole";
 
 export const runtime = "nodejs";
 
@@ -10,23 +11,18 @@ function json(data: unknown, status = 200) {
   });
 }
 
-async function requireUser() {
-  const userClient = await createServerClient();
-  const {
-    data: { user },
-  } = await userClient.auth.getUser();
-  return user;
-}
-
 /**
  * Approve or reject a donor photo attached to a donation.
  * Only pending photos on the creator's own donations can be reviewed, and the
  * decision is mirrored onto the tip feed rows so the OBS overlay only ever
  * renders approved photos.
+ * Requires creator_admin platform role or higher.
  */
 export async function POST(request: Request) {
-  const user = await requireUser();
-  if (!user) return json({ error: "Sign in to review donation photos." }, 401);
+  const auth = await requireCreatorAdmin(request);
+  if (!auth) {
+    return json({ error: "Insufficient platform role." }, 403);
+  }
 
   let body: unknown;
   try {
@@ -40,7 +36,8 @@ export async function POST(request: Request) {
   const input = body as Record<string, unknown>;
   const donationId =
     typeof input.donationId === "string" ? input.donationId.trim() : "";
-  const status = input.action === "reject" ? "rejected" : "approved";
+  const action = input.action === "reject" ? "reject" : "approve";
+  const status = action === "reject" ? "rejected" : "approved";
 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     donationId,
@@ -69,12 +66,17 @@ export async function POST(request: Request) {
   if (donationError || !donation) {
     return json({ error: "Donation not found." }, 404);
   }
-  if (donation.creator_id !== user.id) {
-    return json({ error: "Not your donation." }, 403);
-  }
   if (donation.photo_status !== "pending" || !donation.photo_path) {
     return json({ error: "This donation has no pending photo." }, 400);
   }
+
+  // Capture before state for audit log
+  const before = {
+    id: donation.id,
+    creator_id: donation.creator_id,
+    photo_path: donation.photo_path,
+    photo_status: donation.photo_status,
+  };
 
   const { error: updateError } = await supabase
     .from("donations")
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
     .from("payment_transactions")
     .select("id")
     .eq("donation_id", donationId)
-    .eq("creator_id", user.id);
+    .eq("creator_id", donation.creator_id);
   if (transactions && transactions.length > 0) {
     const transactionIds = transactions.map(
       (t: { id: string }) => t.id as string,
@@ -100,6 +102,33 @@ export async function POST(request: Request) {
       .update({ photo_status: status })
       .in("payment_transaction_id", transactionIds);
   }
+
+  // Capture after state for audit log
+  const { data: afterData } = await supabase
+    .from("donations")
+    .select("id, creator_id, photo_path, photo_status")
+    .eq("id", donationId)
+    .maybeSingle();
+
+  const after = afterData ? {
+    id: afterData.id,
+    creator_id: afterData.creator_id,
+    photo_path: afterData.photo_path,
+    photo_status: afterData.photo_status,
+  } : null;
+
+  // Audit log the action
+  await auditLog(supabase, {
+    actorId: auth.userId,
+    actorRole: auth.platformRole,
+    action,
+    resourceType: "donation_photo",
+    resourceId: donationId,
+    before,
+    after,
+    ipAddress: getClientIp(request),
+    userAgent: getUserAgent(request),
+  });
 
   return json({ ok: true, status });
 }

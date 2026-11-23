@@ -1,10 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Check, Copy, Medal, Trophy, RotateCcw, Play, Pencil, Trash2, ArrowLeft, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getLeaderboardWidgets } from "@/lib/dashboard/leaderboard-settings-adapter";
 import { widgetOverlayUrl } from "@/lib/overlay/widget-url";
 import { validateWidgetSettings } from "@/lib/overlay/widget-validation";
+import {
+  getLeaderboardHistoryState,
+  getLeaderboardSince,
+  type LeaderboardPeriodFilter,
+} from "@/lib/leaderboard-history-state";
+import { getWidgetSettingsState } from "@/lib/dashboard/widget-settings-state";
+import PageHeader from "@/components/ui/PageHeader";
 import styles from "./widget-overlays.module.css";
 
 const LB_FONTS = ['Press Start 2P','Orbitron','Audiowide','Black Ops One','Bungee','Quantico','VT323','Wallpoet','Exo 2','Bebas Neue','Anton','Bangers','Carter One','Fredoka','Fugaz One','Lilita One','Passion One','Paytone One','Righteous','Russo One','Squada One','Teko','Titan One','Ultra','Battambang','Moul','Koulen','Hanuman','Siemreap','Nokora','Taprom','Inter','Rajdhani','Poppins','Roboto','Montserrat','Lato','Nunito','Open Sans','Oswald','Rubik','Ubuntu','Merriweather','Playfair Display','Lobster','Pacifico'];
@@ -31,10 +40,14 @@ type LeaderboardEntry = {
 
 export default function WidgetOverlaysPage() {
   const [tips, setTips] = useState<LeaderboardEntry[]>([]);
-  const [filter, setFilter] = useState<"all" | "month" | "week">("all");
+  const [filter, setFilter] = useState<LeaderboardPeriodFilter>("all");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [widgetUrl, setWidgetUrl] = useState("");
+  const [widgetSettingsLoading, setWidgetSettingsLoading] = useState(true);
+  const [widgetSettingsError, setWidgetSettingsError] = useState(false);
+  const [widgetSettingsRefresh, setWidgetSettingsRefresh] = useState(0);
 
   const [supabase] = useState(() => createClient());
 
@@ -82,40 +95,52 @@ export default function WidgetOverlaysPage() {
   // Declared after the state it reads/writes so there is no temporal-dead-zone
   // access on the first render.
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchWidgetToken() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError || !user) throw new Error("Workspace unavailable");
 
-      await supabase
-        .from("streamkit_overlay_credentials")
-        .upsert({ creator_id: user.id }, { onConflict: "creator_id" });
+        const { error: createError } = await supabase
+          .from("streamkit_overlay_credentials")
+          .upsert({ creator_id: user.id }, { onConflict: "creator_id" });
+        if (createError) throw createError;
 
-      const { data: credentials } = await supabase
-        .from("streamkit_overlay_credentials")
-        .select("widget_token, widget_settings")
-        .eq("creator_id", user.id)
-        .maybeSingle();
+        const { data: credentials, error } = await supabase
+          .from("streamkit_overlay_credentials")
+          .select("widget_token, widget_settings, leaderboard_widget")
+          .eq("creator_id", user.id)
+          .maybeSingle();
+        if (error || !credentials) throw error ?? new Error("Settings unavailable");
+        if (cancelled) return;
 
-      if (credentials?.widget_token) {
-        const baseUrl =
-          typeof window !== "undefined"
-            ? window.location.origin
-            : "http://localhost:3000";
-        setWidgetUrl(`${baseUrl}/overlay/widget?token=${credentials.widget_token}`);
-      }
+        const baseUrl = window.location.origin;
+        setWidgetUrl(
+          credentials.widget_token
+            ? `${baseUrl}/overlay/widget?token=${credentials.widget_token}`
+            : "",
+        );
 
-      const saved = credentials?.widget_settings as
-        | { widgets?: unknown }
-        | undefined;
-      if (saved && Array.isArray(saved.widgets)) {
-        setWidgets(saved.widgets as typeof widgets);
+        setWidgets(getLeaderboardWidgets(credentials) ?? []);
+      } catch {
+        if (!cancelled) {
+          setWidgetUrl("");
+          setWidgetSettingsError(true);
+        }
+      } finally {
+        if (!cancelled) setWidgetSettingsLoading(false);
       }
     }
 
     void fetchWidgetToken();
-  }, [supabase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, widgetSettingsRefresh]);
   const [modal, setModal] = useState<{ type: "clear" | "test" | "delete"; goal: { id: number } } | null>(null);
   const showToast = (msg: string, isError = /failed|error/i.test(msg)) => {
     setToast(msg);
@@ -139,20 +164,18 @@ export default function WidgetOverlaysPage() {
 
     async function loadLeaderboard() {
       setLoading(true);
+      setLoadError(false);
       try {
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+          if (!cancelled) setLoadError(true);
+          return;
+        }
 
-        const since =
-          filter === "all"
-            ? null
-            : new Date(
-                Date.now() - (filter === "week" ? 7 : 30) * 24 * 60 * 60 * 1000,
-              ).toISOString();
         const { data, error } = await supabase.rpc("streamkit_donor_leaderboard", {
-          p_since: since,
+          p_since: getLeaderboardSince(filter),
         });
 
         if (!cancelled) {
@@ -168,7 +191,18 @@ export default function WidgetOverlaysPage() {
 
     void loadLeaderboard();
     return () => { cancelled = true; };
-  }, [filter, supabase]);
+  }, [filter, refreshKey, supabase]);
+
+  const historyState = getLeaderboardHistoryState({
+    loading,
+    failed: loadError,
+    entryCount: tips.length,
+  });
+  const widgetSettingsState = getWidgetSettingsState({
+    loading: widgetSettingsLoading,
+    failed: widgetSettingsError,
+    widgetCount: widgets.length,
+  });
 
   if (loading) {
     return (
@@ -180,23 +214,25 @@ export default function WidgetOverlaysPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <p className={styles.subtitle} style={{ margin: 0 }}>Dashboard / Widget Overlays</p>
-          <h1 className={styles.title}>Widget Overlays</h1>
-          <p className={styles.subtitle}>Manage your stream widgets and overlay parameters.</p>
-        </div>
-        {view === "list" && (
-        <button
-          type="button"
-          className={styles.initBtn}
-          style={{ width: "auto", padding: "10px 22px", marginTop: 0 }}
-          onClick={() => { setEditingId(null); setView("create"); }}
-        >
-          + CREATE WIDGET
-        </button>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="Steam Kit // Streaming Widgets"
+        title="Widget Overlays"
+        description="Manage your stream widgets and overlay parameters."
+        actions={view === "list" ? (
+          <button
+            type="button"
+            className={styles.headerAction}
+            onClick={() => { setEditingId(null); setView("create"); }}
+          >
+            + Create widget
+          </button>
+        ) : undefined}
+      />
+
+      <p className={styles.builderNote}>
+        This is the current multi-widget builder. For the legacy single leaderboard setup, open{" "}
+        <Link href="/dashboard/widgets/leaderboard">Leaderboard</Link>.
+      </p>
 
       {view === "list" ? (
         <>
@@ -206,27 +242,43 @@ export default function WidgetOverlaysPage() {
             <span>CONFIG</span>
             <span>TYPE</span>
             <span>COLORS</span>
-            <span style={{ textAlign: "right" }}>ACTIONS</span>
+            <span className={styles.headActions}>ACTIONS</span>
           </div>
-          {widgets.map((w) => (
+          {widgetSettingsState === "loading" ? (
+            <p className={styles.emptyText} role="status">Loading saved widgets…</p>
+          ) : widgetSettingsState === "error" ? (
+            <div className={styles.widgetLoadError} role="alert">
+              <div>
+                <strong>Saved widgets unavailable</strong>
+                <p>We couldn’t load your widget settings. Retry to check again.</p>
+              </div>
+              <button type="button" className={styles.retryButton} onClick={() => {
+                setWidgetSettingsError(false);
+                setWidgetSettingsLoading(true);
+                setWidgetSettingsRefresh((key) => key + 1);
+              }}>
+                Retry
+              </button>
+            </div>
+          ) : widgetSettingsState === "ready" ? widgets.map((w) => (
             <div key={w.id} className={styles.widgetRow}>
               <span className={styles.widgetTitleCell}>
                 <strong>{w.title}</strong>
                 <small>ID: {w.id}</small>
               </span>
-              <span style={{ display: "flex", gap: 8 }}>
+              <span className={styles.configCell}>
                 <span className={styles.configChip}>{w.rows} Rows</span>
                 <span className={styles.configChip}>{w.animation}</span>
               </span>
               <span><span className={styles.typeBadge}>{w.type}</span></span>
-              <span style={{ display: "flex", gap: 6 }}>
+              <span className={styles.colorCell}>
                 {w.colors.map((c, i) => (
-                  <span key={i} style={{ width: 16, height: 16, borderRadius: 4, background: c, border: "1px solid #1E3350" }} />
+                  <span key={i} className={styles.colorSwatch} style={{ background: c }} />
                 ))}
               </span>
-              <span style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <span className={styles.actionsCell}>
                 <button type="button" className={styles.actClear} onClick={() => setModal({ type: "clear", goal: w })}><RotateCcw size={14} /> Clear</button>
-                <button type="button" className={styles.actUnlock} title="Copy widget URL" style={{ width: 38, height: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }} onClick={async () => {
+                <button type="button" className={styles.actUnlock} title="Copy widget URL" onClick={async () => {
                   const url = widgetOverlayUrl(widgetUrl, w.id);
                   if (!url) return showToast("Widget URL is not ready. Reload this page and try again.", true);
                   try {
@@ -241,7 +293,7 @@ export default function WidgetOverlaysPage() {
                   if (!url) return showToast("Widget URL is not ready. Reload this page and try again.", true);
                   window.open(url, "_blank", "noopener,noreferrer");
                 }}><Eye size={15} /></button>
-                <button type="button" className={styles.actIcon} style={{ color: "#10B981" }} title="Send test donation" onClick={() => setModal({ type: "test", goal: w })}><Play size={15} /></button>
+                <button type="button" className={`${styles.actIcon} ${styles.actTest}`} title="Send test donation" onClick={() => setModal({ type: "test", goal: w })}><Play size={15} /></button>
                 <button type="button" className={styles.actIcon} title="Edit" onClick={() => {
                   const s = w.settings ?? null;
                   if (s) {
@@ -273,11 +325,11 @@ export default function WidgetOverlaysPage() {
                   setEditingId(w.id);
                   setView("create");
                 }}><Pencil size={15} /></button>
-                <button type="button" className={styles.actIcon} style={{ color: "#F87171" }} title="Delete" onClick={() => setModal({ type: "delete", goal: w })}><Trash2 size={15} /></button>
+                <button type="button" className={`${styles.actIcon} ${styles.actDanger}`} title="Delete" onClick={() => setModal({ type: "delete", goal: w })}><Trash2 size={15} /></button>
               </span>
             </div>
-          ))}
-          {widgets.length === 0 && <p style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No widgets yet. Create one to get started.</p>}
+          )) : null}
+          {widgetSettingsState === "empty" && <p className={styles.emptyText} role="status">No widgets yet. Create one to get started.</p>}
         </div>
         <div className={`${styles.card} card`}>
           <h3 className={styles.cardLabel}>ADD TO OBS</h3>
@@ -286,7 +338,7 @@ export default function WidgetOverlaysPage() {
         </>
       ) : (
       <div>
-        <button type="button" className={styles.backBtn} onClick={() => setView("list")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "#F8FAFC", cursor: "pointer", marginBottom: 16 }}>
+        <button type="button" className={styles.backBtn} onClick={() => setView("list")}>
           <ArrowLeft size={16} /> Back
         </button>
       <div className={styles.createGrid}>
@@ -460,7 +512,7 @@ export default function WidgetOverlaysPage() {
                 setWidgets(newWidgets);
                 setEditingId(null);
                 setView("list");
-                showToast("Widget saved. OBS overlay updated.");
+                showToast("Widget settings saved. The overlay checks for changes every 2 seconds.");
                 try {
                   const channel = supabase.channel("streamkit-widget-settings");
                   await channel.subscribe();
@@ -481,7 +533,7 @@ export default function WidgetOverlaysPage() {
         </div>
 
         <div className={styles.createRight}>
-          <div className={styles.livePreviewLabel}>LIVE STREAM PREVIEW <span className={styles.liveDot} /></div>
+          <div className={styles.livePreviewLabel}>WIDGET PREVIEW <span className={styles.liveDot} /></div>
           <div className={styles.previewDashed}>
             <div
               key={animKey}
@@ -533,48 +585,85 @@ border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
       </div>
       )}
 
-      {tips.length > 0 && (
-      <div className={`${styles.card} card`} style={{ borderRadius: 12, border: "1px solid #10B981", borderLeft: "4px solid #10B981" }}>
-          <div className={styles.leaderboardGrid}>
-            {tips.map((tip, index) => (
-              <div
-                key={`${tip.tipper_name}-${tip.currency}`}
-                className={`${styles.leaderboardCard} ${index === 0 ? styles.rankGold : index === 1 ? styles.rankSilver : index === 2 ? styles.rankBronze : ""}`}
-              >
-                <div className={styles.rankBadge}>
-                  {index < 3 ? <Medal size={18} /> : `#${index + 1}`}
-                </div>
-                <div className={styles.donorMeta}>
-                  <strong>{tip.tipper_name}</strong>
-                  <span>{tip.tip_count} {tip.tip_count === 1 ? "donation" : "donations"}</span>
-                </div>
-                <div className={styles.donorAmount}>
-                  {tip.currency === "KHR"
-                    ? `KHR ${Number(tip.amount).toLocaleString()}`
-                    : `USD $${Number(tip.amount).toFixed(2)}`}
-                </div>
-              </div>
-            ))}
+      {view === "list" ? (
+        <section className={`${styles.card} card ${styles.historyCard}`} aria-labelledby="top-donors-title">
+          <div className={styles.historyHead}>
+            <div>
+              <h2 id="top-donors-title" className={styles.cardLabel}>Top Donors</h2>
+              <p className={styles.subtitle}>Leaderboard history for your selected period.</p>
+            </div>
+            <div className={styles.periodTabs} role="group" aria-label="Leaderboard period">
+              {([
+                ["all", "All time"],
+                ["30d", "Last 30 days"],
+                ["7d", "Last 7 days"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`${styles.periodTab} ${filter === value ? styles.periodTabActive : ""}`}
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-      </div>
-      )}
+          {historyState === "error" ? (
+            <div className={styles.historyNotice} role="alert">
+              <div>
+                <strong>Donor history unavailable</strong>
+                <p>We couldn’t load the leaderboard. Try again.</p>
+              </div>
+              <button type="button" className={styles.retryButton} onClick={() => setRefreshKey((key) => key + 1)}>
+                Retry
+              </button>
+            </div>
+          ) : historyState === "empty" ? (
+            <p className={styles.historyEmpty} role="status">No donor history in this period yet.</p>
+          ) : (
+            <div className={styles.leaderboardGrid}>
+              {tips.map((tip, index) => (
+                <div
+                  key={`${tip.tipper_name}-${tip.currency}`}
+                  className={`${styles.leaderboardCard} ${index === 0 ? styles.rankGold : index === 1 ? styles.rankSilver : index === 2 ? styles.rankBronze : ""}`}
+                >
+                  <div className={styles.rankBadge}>
+                    {index < 3 ? <Medal size={18} /> : `#${index + 1}`}
+                  </div>
+                  <div className={styles.donorMeta}>
+                    <strong>{tip.tipper_name}</strong>
+                    <span>{tip.tip_count} {tip.tip_count === 1 ? "donation" : "donations"}</span>
+                  </div>
+                  <div className={styles.donorAmount}>
+                    {tip.currency === "KHR"
+                      ? `KHR ${Number(tip.amount).toLocaleString()}`
+                      : `USD $${Number(tip.amount).toFixed(2)}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
       {modal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(4,7,14,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-          <div style={{ position: "relative", overflow: "hidden", background: "#0F172A", border: "1px solid #1E3350", borderLeft: "4px solid #10B981", borderRadius: 14, padding: 28, width: "100%", maxWidth: 460 }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #0E5844, #10B981)" }} />
-            <h3 style={{ margin: 0, color: "#F8FAFC", display: "flex", alignItems: "center", gap: 10, letterSpacing: 1 }}>
-              {modal.type === "clear" ? <RotateCcw size={18} color="#34D399" /> : modal.type === "delete" ? <Trash2 size={18} color="#F87171" /> : <Play size={18} color="#34D399" />}
+        <div className={styles.modalOverlay} role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-label={modal.type === "clear" ? "Clear widget history" : modal.type === "delete" ? "Confirm deletion" : "Send test donation"}>
+            <div className={styles.modalAccent} />
+            <h3 className={styles.modalTitle}>
+              {modal.type === "clear" ? <RotateCcw size={18} color="var(--dash-primary)" /> : modal.type === "delete" ? <Trash2 size={18} color="var(--dash-danger)" /> : <Play size={18} color="var(--dash-primary)" />}
               {modal.type === "clear" ? "CLEAR WIDGET HISTORY?" : modal.type === "delete" ? "CONFIRM DELETION?" : "SEND TEST DONATION?"}
             </h3>
-            <p style={{ color: "#94A3B8", fontSize: 14 }}>
+            <p className={styles.modalText}>
               {modal.type === "clear"
                 ? "This will start a new session on OBS. Donation history for this widget will be cleared."
                 : modal.type === "delete"
                   ? "This widget will be permanently removed. This action cannot be undone."
-                  : "A simulated mock layout will appear on your OBS widget for 1 minute. You do not need to refresh OBS."}
+                  : "This records one TEST donation in your account. It can appear in every active widget showing donation history, and it does not charge anyone. The record stays in Donation History; clearing a widget only resets that widget’s feed."}
             </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-              <button type="button" onClick={() => setModal(null)} style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, color: "#94A3B8", cursor: "pointer", padding: "10px 20px", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Cancel</button>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => setModal(null)} className={styles.modalCancel}>Cancel</button>
 <button
                   type="button"
                   onClick={async () => {
@@ -611,14 +700,14 @@ border: showBorder ? `1px solid ${colors.border}` : "1px solid transparent",
                         p_currency: "USD",
                         p_message: "Test donation from Widget Overlays",
                       });
-                      showToast(error ? "Test donation could not be sent. Please retry." : "Test donation sent to OBS.", Boolean(error));
+                      showToast(error ? "Test donation could not be recorded. Please retry." : "TEST donation recorded. Check your active OBS sources to confirm where it appears.", Boolean(error));
                     }
                     setModal(null);
                   }}
-                style={{ background: modal.type === "delete" ? "#EF4444" : "#10B981", border: "none", color: "#0F172A", borderRadius: 8, padding: "10px 20px", cursor: "pointer", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", boxShadow: modal.type === "delete" ? "0 0 16px rgba(239,68,68,0.4)" : "0 0 16px rgba(16,185,129,0.4)" }}
-              >
-                {modal.type === "clear" ? "Yes, Clear" : modal.type === "delete" ? "Yes, Delete" : "Send Test"}
-              </button>
+                  className={modal.type === "delete" ? styles.modalDanger : styles.modalConfirm}
+                >
+                  {modal.type === "clear" ? "Yes, Clear" : modal.type === "delete" ? "Yes, Delete" : "Send Test"}
+                </button>
             </div>
           </div>
         </div>

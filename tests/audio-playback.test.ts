@@ -3,6 +3,7 @@ import { afterEach, describe, it, mock } from "node:test";
 
 import {
   playAudioToEnd,
+  playAudioWithAutoplayFallback,
   playViaWebAudio,
   PLAYBACK_TIMEOUT_MS,
   type PlaybackDiagnostic,
@@ -352,6 +353,23 @@ describe("playViaWebAudio", () => {
     assert.equal(outcome, "error");
   });
 
+  it("bounds a fetch or decode that never settles", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    let decodeSignal: AbortSignal | undefined;
+    const promise = playViaWebAudio(
+      "https://x.test/stalled.mp3",
+      { decode: (_url, signal) => {
+        decodeSignal = signal;
+        return new Promise(() => {});
+      } },
+      1_000,
+    );
+
+    mock.timers.tick(1_000);
+    assert.equal(await promise, "timeout");
+    assert.equal(decodeSignal?.aborted, true, "the stalled fetch should be cancelled");
+  });
+
   it("resolves error when a decoder throws while starting the voice", async () => {
     const outcome = await playViaWebAudio("https://x.test/a.mp3", {
       decode: () => Promise.resolve({
@@ -471,5 +489,81 @@ describe("playAudioToEnd — tolerance for a minimal element", () => {
 
     mock.timers.tick(PLAYBACK_TIMEOUT_MS);
     assert.equal(await settled, "timeout");
+  });
+});
+
+describe("playAudioWithAutoplayFallback — donor audio", () => {
+  it("retries only an autoplay-blocked clip through Web Audio", async () => {
+    const audio = new FakeAudio();
+    const blocked = new Error("browser requires a gesture");
+    blocked.name = "NotAllowedError";
+    audio.playRejects = Promise.reject(blocked);
+    const decoded: string[] = [];
+    let fallbackOutcome: PlaybackOutcome | undefined;
+    let primaryErrorName: string | undefined;
+
+    const outcome = await playAudioWithAutoplayFallback(
+      audio,
+      "https://storage.test/donor.webm",
+      {
+        async decode(url) {
+          decoded.push(url);
+          return {
+            play: () => ({ finished: Promise.resolve(), stop() {} }),
+          };
+        },
+      },
+      undefined,
+      (diagnostic) => { primaryErrorName = diagnostic.errorName; },
+      (result) => { fallbackOutcome = result; },
+    );
+
+    assert.equal(outcome, "ended");
+    assert.equal(primaryErrorName, "NotAllowedError");
+    assert.deepEqual(decoded, ["https://storage.test/donor.webm"]);
+    assert.equal(fallbackOutcome, "ended");
+  });
+
+  it("does not replay media errors that may follow partial speech", async () => {
+    const audio = new FakeAudio();
+    const networkError = new Error("network failed");
+    networkError.name = "NetworkError";
+    audio.playRejects = Promise.reject(networkError);
+    let decodeCalls = 0;
+
+    const outcome = await playAudioWithAutoplayFallback(
+      audio,
+      "https://storage.test/donor.webm",
+      {
+        async decode() {
+          decodeCalls += 1;
+          throw new Error("must not decode");
+        },
+      },
+    );
+
+    assert.equal(outcome, "error");
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("does not retry an HTML playback timeout", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const audio = new FakeAudio();
+    let decodeCalls = 0;
+    const promise = playAudioWithAutoplayFallback(
+      audio,
+      "https://storage.test/donor.webm",
+      {
+        async decode() {
+          decodeCalls += 1;
+          throw new Error("must not decode");
+        },
+      },
+      1_000,
+    );
+
+    mock.timers.tick(1_000);
+    assert.equal(await promise, "timeout");
+    assert.equal(decodeCalls, 0);
   });
 });

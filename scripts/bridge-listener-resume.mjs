@@ -161,93 +161,148 @@ export function runResumeSafely(resume, { log = () => {} } = {}) {
  *
  * @param {(config: AgentConfig) => Promise<unknown>} run
  */
+
 export function createListenGuard(run) {
   let inFlight = null;
+  let inFlightConfig = null;
   let started = false;
   let activeConfig = null;
-  /** Teardown returned by the last successful `run`, used by reset(). */
   let teardown = null;
-  /**
-   * Bumped by reset(). An attempt captures the value it started with and must
-   * not commit its result if reset() happened meanwhile -- otherwise a logout
-   * during a slow startup would be undone by the in-flight attempt landing
-   * afterwards, re-arming a guard for a client that no longer exists.
-   */
   let generation = 0;
 
-  /** @returns {AgentConfig | null} */
+  function sameConfig(left, right) {
+    return Boolean(
+      left &&
+      right &&
+      left.agentToken === right.agentToken &&
+      left.chatId === right.chatId &&
+      String(left.botUsername ?? "").replace(/^@/, "").toLowerCase() ===
+        String(right.botUsername ?? "").replace(/^@/, "").toLowerCase()
+    );
+  }
+
   function getActiveConfig() {
     return activeConfig;
   }
 
-  /**
-   * @param {AgentConfig} config
-   * @returns {Promise<ListenResult>}
-   */
-  async function ensureListening(config) {
-    // Already listening: a repeat /configure is a no-op, not a second handler.
+  async function ensureListening(config, wasReplaced = false) {
     if (started) {
-      return { ok: true, resumed: false, reason: "already listening" };
+      if (sameConfig(activeConfig, config)) {
+        return { ok: true, resumed: false, reason: "already listening" };
+      }
+
+      reset();
+      return ensureListening(config, true);
     }
-    // An attempt is already in flight: join it rather than start a second.
+
     if (inFlight) {
-      return inFlight;
+      if (sameConfig(inFlightConfig, config)) {
+        return inFlight;
+      }
+
+      const pending = inFlight;
+      try {
+        await pending;
+      } catch {
+        // A failed previous attempt must not prevent the requested config
+        // from getting its own attempt.
+      }
+      return ensureListening(config, true);
     }
 
     const attemptGeneration = generation;
+    let attempt;
 
-    inFlight = (async () => {
+    attempt = Promise.resolve().then(async () => {
+      let result;
+
       try {
-        const result = await run(config);
-        // A reset() during this attempt invalidates it. The handler is already
-        // attached, so use its own teardown rather than leaving it stranded.
+        result = await run(config, {
+          isCurrent: () => attemptGeneration === generation,
+        });
+
         if (attemptGeneration !== generation) {
           const dispose = result && typeof result === "object" ? result.detach : null;
           if (typeof dispose === "function") {
             try {
               dispose();
             } catch (err) {
-              console.error(`[resume] teardown after reset failed: ${err?.message ?? err}`);
+              console.error("[resume] teardown after reset failed: " + (err?.message ?? err));
             }
           }
-          return { ok: false, resumed: false, reason: "superseded by reset" };
+          return {
+            ok: false,
+            resumed: false,
+            reason: "superseded by reset",
+          };
         }
+
+        // commit() is deliberately synchronous. It publishes the listener
+        // only after the generation check, without an await between the check
+        // and publication.
+        if (result && typeof result === "object" && typeof result.commit === "function") {
+          result.commit();
+        }
+
         started = true;
         activeConfig = config;
-        teardown = result && typeof result === "object" && typeof result.detach === "function"
-          ? result.detach
-          : null;
-        return { ok: true, resumed: true, ...(result ?? {}) };
-      } finally {
-        // Cleared on both success and failure. On failure `started` stays false
-        // so a later retry is permitted; no handler is attached because `run`
-        // resolves only after attachment.
-        inFlight = null;
-      }
-    })();
+        teardown =
+          result && typeof result === "object" && typeof result.detach === "function"
+            ? result.detach
+            : null;
 
-    return inFlight;
+        const { commit, ...publicResult } =
+          result && typeof result === "object" ? result : {};
+
+        return {
+          ok: true,
+          resumed: true,
+          ...publicResult,
+          replaced: wasReplaced,
+        };
+      } catch (err) {
+        // A failed commit or startup must not strand a handler.
+        const dispose = result && typeof result === "object" ? result.detach : null;
+        if (typeof dispose === "function") {
+          try {
+            dispose();
+          } catch (cleanupError) {
+            console.error(
+              "[resume] teardown after failed startup failed: " +
+                (cleanupError?.message ?? cleanupError),
+            );
+          }
+        }
+        throw err;
+      } finally {
+        // An older attempt must never clear the reference to a newer attempt.
+        if (inFlight === attempt) {
+          inFlight = null;
+          inFlightConfig = null;
+        }
+      }
+    });
+
+    inFlight = attempt;
+    inFlightConfig = config;
+    return attempt;
   }
 
-  /**
-   * Clears the guard so a new client (after logout) can listen again.
-   *
-   * Invokes the teardown from the last successful attempt so the handler is
-   * explicitly removed rather than relying on the old client being collected.
-   * Bumps `generation`, which invalidates any attempt still in flight.
-   */
   function reset() {
     generation += 1;
     started = false;
     inFlight = null;
+    inFlightConfig = null;
     activeConfig = null;
+
     if (typeof teardown === "function") {
       try {
         teardown();
       } catch (err) {
-        console.error(`[resume] teardown during reset failed: ${err?.message ?? err}`);
+        console.error("[resume] teardown during reset failed: " + (err?.message ?? err));
       }
     }
+
     teardown = null;
   }
 

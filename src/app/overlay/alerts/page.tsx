@@ -4,10 +4,11 @@ import { useState, useEffect, use, useRef, type Dispatch, type SetStateAction } 
 import { createClient } from "@/lib/supabase/client";
 import type { Tip } from "@/lib/types";
 import styles from "../[token]/overlay.module.css";
-import widgetStyles from "../../dashboard/alerts/alerts.module.css";
+import widgetStyles from "../../dashboard/widgets/alerts/alerts.module.css";
 import {
   ALERT_DURATION_SECONDS,
   applyTier,
+  getAlertCardStyle,
   highlightText,
   parseTemplate,
   pickTier,
@@ -20,6 +21,7 @@ import {
 import {
   PLAYBACK_TIMEOUT_MS,
   errorNameOf,
+  playAudioWithAutoplayFallback,
   playAudioToEnd,
   playViaWebAudio,
   type AudioDecoder,
@@ -47,7 +49,6 @@ type OverlayConfig = AlertSettings & VoiceSettings & {
 };
 
 const PHOTO_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-photos`;
-const VOICE_STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}/storage/v1/object/public/donation-voice`;
 
 /**
  * `speechSynthesis.getVoices()` is populated asynchronously -- Chromium returns
@@ -384,8 +385,8 @@ async function ensureAudioOutputKnown(): Promise<boolean> {
 
 function webAudioDecoder(volume = 1): AudioDecoder {
   return {
-    async decode(url: string) {
-      const res = await fetch(url);
+    async decode(url: string, signal?: AbortSignal) {
+      const res = await fetch(url, { signal });
       if (!res.ok) throw new Error(`audio fetch ${res.status}`);
       const bytes = await res.arrayBuffer();
       const context = await runningAudioContext();
@@ -601,10 +602,47 @@ function playSoundEffect(url: string): void {
 }
 
 /** Plays a donor voice message, resolving when it ends, fails or stalls. */
-async function playVoiceMessage(path: string): Promise<void> {
-  const where = audioLocation(`${VOICE_STORAGE_BASE}/${path}`);
-  await playAudioToEnd(new Audio(`${VOICE_STORAGE_BASE}/${path}`), PLAYBACK_TIMEOUT_MS, (d) =>
-    playbackLog(`donor-voice ${where}`, d.outcome, d.errorName),
+async function playVoiceMessage(tipId: string, overlayToken: string | null | undefined): Promise<void> {
+  if (!overlayToken?.trim()) {
+    throw new Error("overlay token is unavailable");
+  }
+
+  const response = await fetch("/api/overlay/donation-voice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ overlayToken, tipId }),
+  });
+
+  const result = (await response.json().catch(() => null)) as {
+    audioUrl?: unknown;
+  } | null;
+
+  if (
+    !response.ok ||
+    typeof result?.audioUrl !== "string" ||
+    !result.audioUrl
+  ) {
+    throw new Error(`donor voice URL request failed (${response.status})`);
+  }
+
+  const url = result.audioUrl;
+  const where = audioLocation(url);
+  const decoder: AudioDecoder = {
+      async decode(audioUrl, signal) {
+      if (!(await ensureAudioOutputKnown())) {
+        throw new Error("Web Audio output is unavailable");
+      }
+        return webAudioDecoder().decode(audioUrl, signal);
+    },
+  };
+  await playAudioWithAutoplayFallback(
+    new Audio(url),
+    url,
+    decoder,
+    PLAYBACK_TIMEOUT_MS,
+    (d) => playbackLog(`donor-voice ${where}`, d.outcome, d.errorName),
+    (outcome) => playbackLog(`donor-voice-webaudio ${where}`, outcome),
   );
 }
 
@@ -717,7 +755,7 @@ function triggerAlert(
       )
     : Promise.resolve();
   void announce
-    .then(() => playVoiceMessage(tip.voice_path!))
+    .then(() => playVoiceMessage(tip.id, overlayToken))
     .catch((error) => {
       alertFault(`donor voice playback failed error=${errorNameOf(error) ?? "unknown"}`);
     })
@@ -1172,7 +1210,6 @@ export default function AlertsOverlayPage({
     text_animation,
     text_delay = 0,
     donor_avatar,
-    tts_enabled,
   } = alertSettings;
 
   const widgetAnimMap: Record<string, string> = {
@@ -1195,8 +1232,6 @@ export default function AlertsOverlayPage({
   const widgetAnimClass = widgetStyles[widgetAnimMap[alert_animation] ?? "bounceIn"];
   const textAnimClass = widgetStyles[text_animation ?? "wiggle"] ?? widgetStyles.wiggle;
 
-  const imgSize = Math.round(60 + (image_scale / 100) * 160);
-
   return (
     <div className={styles.overlayRoot} aria-live="polite">
       {tokenInvalid && (
@@ -1211,6 +1246,7 @@ export default function AlertsOverlayPage({
           className={`${widgetStyles.alertContainer} ${widgetAnimClass} ${
             layout === "image_left" ? widgetStyles.alertContainerRow : ""
           }`}
+          style={getAlertCardStyle({ enable_card, bg_color })}
           role="alert"
         >
           <div className={layout === "image_left" ? widgetStyles.alertMediaGroup : widgetStyles.alertMediaGroupStacked}>

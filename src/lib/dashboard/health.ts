@@ -6,6 +6,106 @@ export type TelegramBridgeSnapshot = {
   detail: string;
 };
 
+export type TtsHealthSnapshot = {
+  level: HealthLevel;
+  label: string;
+  detail: string;
+};
+
+export type TtsCloneReadiness = "ready" | "not_selected" | "needs_setup" | "unknown";
+
+/** TTS is available if any saved alert tier enables it; no rows means unknown/default. */
+export function savedTtsEnabled(
+  rows: ReadonlyArray<{ tts_enabled: boolean | null }>,
+): boolean | null {
+  if (rows.length === 0) return null;
+  return rows.some((row) => row.tts_enabled !== false);
+}
+
+export type TtsHealthInput = {
+  configured: boolean;
+  enabled: boolean | null;
+  cloneReadiness: TtsCloneReadiness;
+  observation: {
+    stage: "started" | "provider_audio" | "failed" | "audio_ready";
+    result: "started" | "audio" | "failed";
+    voiceSource?: "clone" | "fallback";
+    failureKind?: "timeout" | "provider" | "transport" | "invalid_audio" | "storage";
+    providerStatus?: number;
+  } | null;
+  detail: string;
+};
+
+/** Report the current saved TTS prerequisites before interpreting an older synthesis result. */
+export function ttsHealthSnapshot(data: TtsHealthInput): TtsHealthSnapshot {
+  if (!data.configured) {
+    return { level: "degraded", label: "Not configured", detail: "The server reports that the TTS backend is not configured." };
+  }
+  if (data.enabled === false) {
+    return { level: "degraded", label: "Disabled", detail: "Text-to-speech is off in the saved alert settings." };
+  }
+  if (data.cloneReadiness === "not_selected") {
+    return {
+      level: "degraded",
+      label: "No clone selected",
+      detail: "Choose and enable the voice clone in Voice Settings before testing cloned speech. A fallback voice may still be available.",
+    };
+  }
+  if (data.cloneReadiness === "needs_setup") {
+    return {
+      level: "degraded",
+      label: "Selected clone not ready",
+      detail: "The saved clone selection is missing consent or its VoiceStudio voice ID. Review that clone in Voice Settings.",
+    };
+  }
+  if (data.cloneReadiness === "unknown") {
+    return { level: "unknown", label: "Clone selection unknown", detail: "The saved voice-clone selection could not be checked." };
+  }
+  if (data.observation?.stage === "provider_audio") {
+    return {
+      level: "unknown",
+      label: "Audio received, preparing playback",
+      detail: "The provider returned audio; validation, storage, and playback URL setup are not complete yet.",
+    };
+  }
+  if (data.observation?.result === "audio" && data.observation.stage === "audio_ready") {
+    if (data.observation.voiceSource === "fallback") {
+      return {
+        level: "degraded",
+        label: "Fallback audio ready",
+        detail: "The configured fallback voice produced audio; the selected clone was not used for this result.",
+      };
+    }
+    if (data.observation.voiceSource === "clone") {
+      return {
+        level: "healthy",
+        label: "Clone audio ready",
+        detail: "The selected cloned voice produced audio, and a playback URL was prepared. This does not confirm that OBS played it audibly.",
+      };
+    }
+    return { level: "healthy", label: "Audio ready", detail: data.detail };
+  }
+  if (data.observation?.result === "failed") {
+    const reason = data.observation.failureKind === "timeout"
+      ? "The latest synthesis timed out."
+      : data.observation.failureKind === "invalid_audio"
+        ? "The provider returned audio in an unexpected format."
+        : data.observation.failureKind === "storage"
+          ? "The audio could not be stored or signed for playback."
+          : data.observation.failureKind === "transport"
+            ? "The provider connection failed without a confirmed response; fallback was not attempted to avoid overlapping work."
+          : data.observation.providerStatus
+            ? `The provider returned HTTP ${data.observation.providerStatus}.`
+            : "The latest synthesis failed.";
+    return { level: "degraded", label: "Last synthesis failed", detail: reason };
+  }
+  return {
+    level: "unknown",
+    label: data.observation ? "Synthesis in progress" : "No result yet",
+    detail: data.observation ? "A synthesis request started; no result has been recorded yet." : data.detail,
+  };
+}
+
 /** Interpret only the bridge fields the dashboard needs; never forward its raw error or QR value. */
 export function telegramBridgeSnapshot(input: {
   reachable: boolean;

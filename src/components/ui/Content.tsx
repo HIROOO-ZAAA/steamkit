@@ -166,7 +166,7 @@ export function StatusDot({
 }: StatusDotProps) {
   return (
     <span
-      className={`${styles.statusDot} ${styles[`status_${status}`]} ${className}`.trim()}
+      className={`${styles.statusDot} ${styles["status_" + status] || ""} ${className}`.trim()}
       {...props}
     >
       <span className={styles.statusMark} aria-hidden="true" />
@@ -202,7 +202,7 @@ export function Avatar({ name, src, size = "md" }: AvatarProps) {
 
   return (
     <span
-      className={`${styles.avatar} ${styles[`avatar_${size}`]}`}
+      className={`${styles.avatar} ${styles["avatar_" + size] || ""}`}
       role="img"
       aria-label={name}
     >
@@ -317,7 +317,7 @@ export function Alert({
 }: AlertProps) {
   return (
     <div
-      className={`${styles.alert} ${styles[`alert_${tone}`]} ${className}`.trim()}
+      className={`${styles.alert} ${styles["alert_" + tone] || ""} ${className}`.trim()}
       role={tone === "error" ? "alert" : "status"}
       {...props}
     >

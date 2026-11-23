@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { ArrowUpRight, BellRing, Goal, HandCoins, UserRound } from "lucide-react";
+import { ArrowUpRight, BellRing, Goal, HandCoins, Trophy, UserRound } from "lucide-react";
 import styles from "./widgets.module.css";
 
 const destinations = [
   {
+    title: "Leaderboard widgets",
+    description: "Create an on-screen leaderboard and copy its OBS browser-source URL.",
+    href: "/dashboard/widget-overlays",
+    icon: Trophy,
+  },
+  {
     title: "Donation alerts",
     description: "Configure alert styling and test the creator overlay.",
-    href: "/dashboard/alerts",
+    href: "/dashboard/widgets/alerts",
     icon: BellRing,
   },
   {
@@ -31,7 +37,7 @@ const destinations = [
 
 export default function WidgetsPage() {
   return (
-    <main className={styles.container}>
+    <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>Stream tools</h1>
         <p className={styles.subtitle}>
@@ -53,6 +59,6 @@ export default function WidgetsPage() {
           </Link>
         ))}
       </div>
-    </main>
+    </div>
   );
 }

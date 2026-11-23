@@ -35,6 +35,13 @@ export type AlertSettings = {
   donor_avatar?: string;
 };
 
+export function getAlertCardStyle(
+  settings: Pick<AlertSettings, "enable_card" | "bg_color">,
+): { backgroundColor: string } | undefined {
+  if (!settings.enable_card) return undefined;
+  return { backgroundColor: settings.bg_color || "#000000" };
+}
+
 /**
  * One entry from the RPC's `tiers` jsonb array. Every visual field is nullable
  * because a tier row may exist in `alert_tiers` without a matching

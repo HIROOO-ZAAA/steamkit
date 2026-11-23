@@ -37,10 +37,9 @@ function json(data: unknown, status = 200) {
  * Confirms the bytes really are the audio container the declared MIME type
  * claims.
  *
- * This matters because the bucket is public: an object whose declared type is
- * `audio/webm` but whose body is HTML would otherwise be served from a
- * Supabase domain as a document. The MIME allowlist above cannot catch that,
- * because the MIME type comes from the client.
+ * The MIME type comes from the client, so the allowlist alone cannot verify
+ * the actual file contents. Checking the signature prevents a file with a
+ * misleading audio MIME type from being stored as a different content type.
  *
  * The check itself lives in lib/voice/audio-validation, shared with the voice
  * clone upload so the two cannot drift. The copy that used to sit here matched
@@ -52,7 +51,7 @@ function json(data: unknown, status = 200) {
  */
 
 /**
- * Accepts a donor voice message and stores it in the public
+ * Accepts a donor voice message and stores it in the
  * `donation-voice` bucket, returning the object path and a clamped duration.
  *
  * The returned `voicePath` is what the pay page hands to the payment API; it

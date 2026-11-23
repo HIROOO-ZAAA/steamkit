@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { voiceStudioConfigured } from "@/lib/voice/voicestudio";
 import { getTtsObservation } from "@/lib/voice/tts-health";
+import { savedTtsEnabled } from "@/lib/dashboard/health";
+import { selectedCloneId } from "@/lib/voice/clone-selection";
 
 export const runtime = "nodejs";
 
@@ -41,14 +43,35 @@ export async function GET() {
       .from("alert_settings")
       .select("tts_enabled")
       .eq("user_id", user.id)
-      .maybeSingle(),
   ]);
 
-  const databaseOk = !tipsResult.error && !voiceResult.error && !alertResult.error;
   const observation = getTtsObservation(user.id);
   const tips = tipsResult.data ?? [];
   const voiceSettings = voiceResult.data;
   const alertSettings = alertResult.data;
+  const activeCloneId = selectedCloneId(voiceSettings);
+  const cloneResult = activeCloneId
+    ? await supabase
+        .from("voice_clones")
+        .select("consent_at, voicestudio_voice_id")
+        .eq("id", activeCloneId)
+        .eq("owner_id", user.id)
+        .maybeSingle()
+    : null;
+  const databaseOk =
+    !tipsResult.error &&
+    !voiceResult.error &&
+    !alertResult.error &&
+    !cloneResult?.error;
+  const cloneReadiness = voiceResult.error
+    ? "unknown"
+    : !activeCloneId
+      ? "not_selected"
+      : cloneResult?.error
+        ? "unknown"
+        : cloneResult?.data?.consent_at && cloneResult.data.voicestudio_voice_id
+          ? "ready"
+          : "needs_setup";
 
   return Response.json(
     {
@@ -77,12 +100,8 @@ export async function GET() {
       },
       tts: {
         configured: voiceStudioConfigured(),
-        enabled: alertSettings ? alertSettings.tts_enabled !== false : null,
-        cloneSelected: voiceResult.error
-          ? null
-          : voiceSettings
-            ? voiceSettings.cloning_enabled === true && Boolean(voiceSettings.active_clone_id)
-            : false,
+        enabled: alertResult.error ? null : savedTtsEnabled(alertSettings ?? []),
+        cloneReadiness,
         observation,
         detail: observation
           ? "Most recent synthesis result observed by this application process."
@@ -94,7 +113,13 @@ export async function GET() {
       },
       issues: [
         ...(tipsResult.error ? ["Recent donation events could not be loaded."] : []),
-        ...(voiceResult.error ? ["Saved voice selection could not be checked."] : []),
+        ...(voiceResult.error
+          ? ["Saved voice selection could not be checked."]
+          : cloneResult?.error
+            ? ["Selected voice clone could not be checked."]
+            : cloneReadiness === "needs_setup"
+              ? ["Selected voice clone is not ready to speak."]
+              : []),
         ...(alertResult.error ? ["Saved alert speech setting could not be checked."] : []),
       ],
     },

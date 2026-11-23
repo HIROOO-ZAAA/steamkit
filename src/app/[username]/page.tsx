@@ -5,8 +5,9 @@ import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { Award, Heart, Medal, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getPublicSupportersState } from "@/lib/public-supporters-state";
 import type { Profile, TipSettings, Tip } from "@/lib/types";
-import { SteamKitMark } from "@/components/ui/SteamKitMark";
+import SteamKitMark from "@/components/ui/SteamKitMark";
 import styles from "./creator.module.css";
 
 interface PaymentIntent {
@@ -31,6 +32,8 @@ interface PaymentStatusResponse {
   error?: string;
 }
 
+type PublicSupporterTip = Pick<Tip, "id" | "tipper_name" | "amount" | "currency">;
+
 export default function PublicCreatorPage({
   params,
 }: {
@@ -48,7 +51,8 @@ export default function PublicCreatorPage({
     | "stream_title"
   > | null>(null);
   const [tipSettings, setTipSettings] = useState<TipSettings | null>(null);
-  const [recentTips, setRecentTips] = useState<Tip[]>([]);
+  const [recentTips, setRecentTips] = useState<PublicSupporterTip[]>([]);
+  const [supportersUnavailable, setSupportersUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"tip" | "leaderboard">("tip");
 
@@ -105,17 +109,18 @@ export default function PublicCreatorPage({
         }
       }
 
-      // Fetch recent tips for leaderboard
-      const { data: tipsData } = await supabase
-        .from("tips")
-        .select("*")
-        .eq("creator_id", profData.id)
-        .eq("payment_status", "successful")
-        .order("amount", { ascending: false })
-        .limit(10);
+      // The public page gets only successful supporter names and amounts from
+      // a username-scoped RPC; private donor messages never leave the DB.
+      const { data: tipsData, error: supportersError } = await supabase.rpc(
+        "streamkit_get_public_creator_supporters",
+        { p_username: username.toLowerCase(), p_limit: 10 },
+      );
 
-      if (tipsData) {
-        setRecentTips(tipsData);
+      if (supportersError) {
+        setSupportersUnavailable(true);
+      } else if (tipsData) {
+        setSupportersUnavailable(false);
+        setRecentTips(tipsData as PublicSupporterTip[]);
       }
 
       setLoading(false);
@@ -149,7 +154,12 @@ export default function PublicCreatorPage({
           if (result.donation) {
             setRecentTips((current) =>
               [
-                result.donation!,
+                {
+                  id: result.donation!.id,
+                  tipper_name: result.donation!.tipper_name,
+                  amount: result.donation!.amount,
+                  currency: result.donation!.currency,
+                },
                 ...current.filter((tip) => tip.id !== result.donation!.id),
               ].slice(0, 10),
             );
@@ -215,6 +225,7 @@ export default function PublicCreatorPage({
           amount: parsedAmount,
           currency,
           message,
+          paymentMethod: "bakong",
         }),
       });
       const result = await response.json();
@@ -506,10 +517,14 @@ export default function PublicCreatorPage({
                 <p>Hall of fame for supporters of @{profile.username}</p>
               </div>
 
-              {recentTips.length === 0 ? (
+              {getPublicSupportersState(supportersUnavailable, recentTips.length) !== "ready" ? (
                 <div className={styles.emptyLeaderboard}>
                   <Trophy size={22} strokeWidth={1.8} aria-hidden="true" />
-                  <p>No tips recorded yet. Be the first top supporter!</p>
+                  <p>
+                    {supportersUnavailable
+                      ? "Top supporters are temporarily unavailable. Please try again later."
+                      : "No tips recorded yet. Be the first top supporter!"}
+                  </p>
                 </div>
               ) : (
                 <div className={styles.leaderboardList}>
@@ -528,7 +543,6 @@ export default function PublicCreatorPage({
                       </div>
                       <div className={styles.supporterInfo}>
                         <strong>{tip.tipper_name}</strong>
-                        {tip.message && <p>{tip.message}</p>}
                       </div>
                       <div className={styles.supporterAmount}>
                         {tip.currency === "KHR"
